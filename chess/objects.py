@@ -1,12 +1,17 @@
 import os
 
 class Piece:
+    """
+    Class to keep track of pieces and important values associated with them
+    """
     def __init__(self, name: str, color: str, value: int, moves: set, texture=None, texture_rect=None):
         self.name = name
+        # if the piece is black, then we want to minimize its score, otherwise, we want to maximize it
         if (self.name.islower()):
             value_sign = -1
         else:
             value_sign = 1
+        # associate a numerical value with the piece, for exame a queen would be worth 9 points
         if (self.name == 'p' or self.name == 'P'):
             self.value = 1
         elif (self.name == 'n' or self.name == 'N'):
@@ -19,7 +24,7 @@ class Piece:
             self.value = 9
         elif (self.name == 'k' or self.name == 'K'):
             self.value = 10000
-
+        # give the piece the name commonly called
         if (self.name == 'p'):
             self.name = 'black_pawn'
         if (self.name == 'P'):
@@ -53,6 +58,9 @@ class Piece:
         self.texture_rect = texture_rect
 
     def set_texture(self, size:str) -> None:
+        """
+        Give the path name to the picture of the piece, so we can load it as an image
+        """
         self.texture = os.path.join(
             f"assets/{size}px/{self.name}.png"
         )
