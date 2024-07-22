@@ -37,6 +37,7 @@ class Engine():
         self.move = None
 
     def evaluate(self, isWhite: bool):
+        materialValue = 0
         squares = list(self.board.keys())
         if (self.pythonBoard.is_stalemate()):
             return 0
@@ -54,8 +55,8 @@ class Engine():
                     color = "white"
                 moves = findLegalMoves(self.pythonBoard.legal_moves, square)
                 piece = Piece(name, color, 0, moves)
-                self.materialValue += piece.value
-        return self.materialValue
+                materialValue += piece.value
+        return materialValue
 
     def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int):
         possibleMoves = {}
@@ -100,6 +101,7 @@ class Engine():
                         bestEvaluation = evaluation
                         if (depth == DEPTH):
                             self.move = ch.Move.from_uci(blackSquare + move)
+                            self.materialValue = bestEvaluation
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
                     beta = min(beta, evaluation)

@@ -198,6 +198,7 @@ class MainWindow():
                         # self.currBoard = fenConverter(self.board.board_fen())
                         print(self.engine.search(DEPTH, False, float("-inf"), float("inf")))
                         self.board.push(self.engine.move)
+                        print(self.engine.materialValue)
                     if (moveCount == 1):
                         self.board.push(ch.Move.from_uci("e7e5"))
                     elif (moveCount == 3):
