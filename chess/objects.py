@@ -49,10 +49,10 @@ class Piece:
         self.value = self.value * value_sign
         self.moves = moves
         self.texture = texture
-        self.set_texture()
+        self.set_texture('80')
         self.texture_rect = texture_rect
 
-    def set_texture(self):
+    def set_texture(self, size:str) -> None:
         self.texture = os.path.join(
-            f"assets/{self.name}.png"
+            f"assets/{size}px/{self.name}.png"
         )

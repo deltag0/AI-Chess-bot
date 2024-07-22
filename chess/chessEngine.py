@@ -5,8 +5,9 @@ import chess.svg
 import pygame
 import sys
 from constants import *
-from board import Game
+from board import Game, findLegalMoves
 from objects import *
+from controls import Dragger
 
 def fenConverter(string: str) -> dict[str: str]:
     boardRows = string.split("/")
@@ -25,15 +26,14 @@ def fenConverter(string: str) -> dict[str: str]:
         prevNum = 0
     return piecePositions
 
-
-def findLegalMoves(allMoves: list[chess.Move], currPos: str) -> set[str]:
-    legalMoves = set()
-    for location in allMoves:
-        pos = str(location)[2:]
-        if (chess.Move.from_uci(currPos + pos) in allMoves):
-            legalMoves.add(pos)
-    return legalMoves
-
+def hasPiece(board: dict[str: str], pos: str) -> bool:
+    """
+        Returns true if the position has a piece, false otherwise 
+    """
+    if (board[pos] != '0'):
+        return True
+    else:
+        return False
 
 
 class Main():
@@ -94,38 +94,83 @@ class MainWindow():
         pygame.display.set_caption("Chess")
 
     def startGame(self):
-        self.game = Game()
-        game = self.game
+        dragging = False
+        draggedPiece = None
+        mouseX = 0
+        mouseY = 0
+        initialRow = 0
+        initialCol = 0
         while (self.board.is_checkmate() == False):
             self.currBoard = fenConverter(self.board.board_fen())
+            self.game = Game(self.currBoard, self.board, dragging, draggedPiece, mouseX, mouseY, initialRow, initialCol)
+            dragger = self.game.dragger
+            game = self.game
             game.showBoard(self.screen)
-            self.show_pieces(self.screen)
+            game.show_pieces(self.screen)
+            if (dragger.dragging):
+                dragger.updateBlit(self.screen)
             for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+
+                # event for exiting game
+                if (event.type == pygame.QUIT):
                     pygame.quit()
                     sys.exit()
+
+                # event for clicking piece
+                if (event.type == pygame.MOUSEBUTTONDOWN):
+                    mouseX, mouseY = event.pos
+                    dragger.mouseX = mouseX
+                    dragger.mouseY = mouseY
+                    clickedRow = str(8 - (dragger.mouseY // SQSIZE))
+                    clickedCol = chr(dragger.mouseX // SQSIZE + ord('a'))
+                    pos = clickedCol + clickedRow
+
+                    # event for a square with a piece
+                    if (hasPiece(self.currBoard, pos)):
+                        name = self.currBoard[pos]
+                        if (name.islower()):
+                            color = 'black'
+                        else:
+                            color = 'white'
+                        draggedPiece = Piece(name, color, 0, findLegalMoves(self.board.legal_moves, pos))
+                        print(findLegalMoves(self.board.legal_moves, pos))
+                        dragger.piece = draggedPiece
+                        initialRow = clickedRow
+                        initialCol = clickedCol
+                        dragger.initialRow = clickedRow
+                        dragger.initialCol = initialCol
+                        dragging = True
+                        dragger.dragging = dragging
+                # event for moving piece
+                elif (event.type == pygame.MOUSEMOTION):
+                    # event if piece is getting dragged
+                    if (dragger.dragging == True):
+                        mouseX, mouseY = event.pos
+                        dragger.mouseX = mouseX
+                        dragger.mouseY = mouseY
+                        game.showBoard(self.screen)
+                        game.show_pieces(self.screen)
+                        dragger.updateBlit(self.screen)
+                
+                # event for placing (releasing) piece
+                elif (event.type == pygame.MOUSEBUTTONUP):
+                    mouseX, mouseY = event.pos
+                    currRow = str(8 - (mouseY // SQSIZE))
+                    currCol = chr(mouseX // SQSIZE + ord('a'))
+                    square = currCol + currRow
+                    print(dragger.initialCol + dragger.initialRow)
+                    if (dragger.piece != None and square in dragger.piece.moves):
+                        self.board.push(ch.Move.from_uci(dragger.initialCol + dragger.initialRow + square))
+                    game.showBoard(self.screen)
+                    game.show_pieces(self.screen)
+
+                    dragging = False
+                    dragger.dragging = dragging
+                    draggedPiece = None
+                    dragger.piece = draggedPiece
             pygame.display.update()
 
-    def show_pieces(self, surface):
-        currBoard = self.currBoard
-        for pos in list(currBoard.keys()):
-            if (currBoard[pos] == '0'):
-                pass
-            else:
-                col, row = (ord(pos[0]) - ord('a'), 8 - int(pos[1]))
-                if (currBoard[pos].islower()):
-                    color = "black"
-                else:
-                    color = "white"
-                moves = findLegalMoves(self.board.legal_moves, pos)
-                piece = Piece(currBoard[pos], color, 0, moves)
-                img = pygame.image.load(piece.texture)
-                img_center = col * SQSIZE + SQSIZE // 2, row * SQSIZE + SQSIZE // 2
-                piece.texture_rect = img.get_rect(center=img_center)
-                surface.blit(img, piece.texture_rect)
 
 newBoard = ch.Board()
 window = MainWindow(newBoard)
 window.startGame()
-# game = Main(newBoard)
-# game.startGame()
