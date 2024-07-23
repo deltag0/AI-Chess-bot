@@ -70,6 +70,7 @@ class Engine():
                     possibleMoves[square] = findLegalMoves(self.pythonBoard.legal_moves, square)
             bestEvaluation = float('-inf')
             whiteSquares = list(possibleMoves.keys())
+            # go through all possible moves of each white piece
             for whiteSquare in whiteSquares:
                 for move in possibleMoves[whiteSquare]:
                     self.pythonBoard.push(ch.Move.from_uci(whiteSquare + move))
@@ -88,10 +89,9 @@ class Engine():
             for square in squares:
                 if (self.board[square] != '0' and self.board[square].islower()):
                     possibleMoves[square] = findLegalMoves(self.pythonBoard.legal_moves, square)
-                    print(self.pythonBoard.legal_moves, square)
-                    print(self.pythonBoard)
             bestEvaluation = float('inf')
             blackSquares = list(possibleMoves.keys())
+            # go through all possible moves of each white piece
             for blackSquare in blackSquares:
                 for move in possibleMoves[blackSquare]:
                     self.pythonBoard.push(ch.Move.from_uci(blackSquare + move))
