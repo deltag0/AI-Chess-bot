@@ -2,6 +2,7 @@ from objects import Piece
 from board import findLegalMoves
 import chess as ch
 from constants import *
+
 def fenConverter(string: str) -> dict[str: str]:
     """
     fenConverter converts the string string from fen notation (https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation)
@@ -27,6 +28,11 @@ def fenConverter(string: str) -> dict[str: str]:
     return piecePositions
 
 def findColor(name: str) -> str:
+    """
+    finColor finds the color of the piece with the name name.
+    The name of the piece is how it's used in fen Notation, so 
+    p (black pawn), P (white pawn), n (white knight), etc.
+    """
     if (name.islower()):
         return "black"
     else:
@@ -35,7 +41,7 @@ def findColor(name: str) -> str:
 
 class Engine():
     """
-    Class that controles the engine with the moves
+    Class that controls the engine with the moves
     """
     def __init__(self, board: dict[str: str], pythonBoard: ch.Board) -> None:
         self.board = board
@@ -43,13 +49,57 @@ class Engine():
         self.materialValue = 0
         self.move = None
 
+    def attackedByPawn(self, start: str, color: str) -> bool:
+        """
+        attackedByPawn detects if a piece at position start with the color color is attacked by a pawn.
+        A pinned pawn will NOT count as an attacker.
+        """
+        if (color == "white"):
+            left = ""
+            right = ""
+            # check row
+            if (start[1] != '8'):
+                # check column
+                if (start[0] != 'a'):
+                    left = chr(ord(start[0]) - 1) + str(int(start[1]) + 1)
+                    if (self.board[left] == 'p' and self.pythonBoard.is_pinned(ch.BLACK, ch.parse_square(left)) == False):
+                        return True
+                if (start[0] != 'h'):
+                    right = chr(ord(start[0]) + 1) + str(int(start[1]) + 1)
+                    if (self.board[right] == 'p' and self.pythonBoard.is_pinned(ch.BLACK, ch.parse_square(right)) == False):
+                        return True
+                return False
+        else:
+            left = ""
+            right = ""
+            # check row
+            if (start[1] != '1'):
+                # check column
+                if (start[0] != 'a'):
+                    right = chr(ord(start[0]) - 1) + str(int(start[1]) - 1)
+                    if (self.board[right] == 'P' and self.pythonBoard.is_pinned(ch.WHITE, ch.parse_square(right)) == False):
+                        return True
+                if (start[0] != 'h'):
+                    left = chr(ord(start[0]) + 1) + str(int(start[1]) - 1)
+                    if (self.board[left] == 'P' and self.pythonBoard.is_pinned(ch.WHITE, ch.parse_square(left)) == False):
+                        return True
+                return False
+
     def orderMoves(self, moves: set[str], start: str) -> list[str]:
+        """
+        orderMoves sorts the moves in an order with estimates to how good the
+        move is. There are 3 criterias: 
+        Move to capture a piece, 
+        Move to promote,
+        Move that gets a piece attacked by a pawn
+        """
         valList = []
         moveName = self.board[start]
         moveColor = findColor(moveName)
         movePiece = Piece(moveName, moveColor, 0, set())
         for move in moves:
             targetName = self.board[move]
+            # if there's a piece on the square, check the captured piece
             if (targetName != '0'):
                 targetColor = findColor(targetName)
                 targetPiece = Piece(targetName, targetColor, 0, set())
@@ -57,14 +107,22 @@ class Engine():
                 val = 10 * val - abs(movePiece.value)
             else:
                 val = 0
+            # check for promotion
+            if (move[1] == '8' and (moveName == 'p' or moveName == 'P')):
+                val += 9
+            # check for pawn attacks
+            if (self.attackedByPawn(move, moveColor)):
+                val -= movePiece.value
             valList.append(val)
         moves = list(moves)
         combined = list(zip(moves, valList))
         return [move[0] for move in sorted(combined, key=lambda x: x[1], reverse=True)]
 
 
-
-    def evaluate(self, isWhite: bool):
+    def evaluate(self, isWhite: bool) -> float:
+        """
+        evaluate evaluates the position solely based on the pieces points
+        """
         materialValue = 0
         squares = list(self.board.keys())
         if (self.pythonBoard.is_stalemate()):
@@ -75,18 +133,90 @@ class Engine():
             else:
                 return float('inf')
         for square in squares:
+            # if there's a piece on the square
             if (self.board[square] != '0'):
                 name = self.board[square]
                 if (name.islower()):
                     color = "black"
                 else:
                     color = "white"
-                moves = findLegalMoves(self.pythonBoard.legal_moves, square)
+                moves = set()
                 piece = Piece(name, color, 0, moves)
                 materialValue += piece.value
         return materialValue
 
-    def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int):
+    def isCapture(self, square: str) -> bool;
+        if (self.board[square] != '0'):
+            return True
+        else:
+            return False
+
+    def findCaptureMoves(self, allMoves: list[ch.Move], currPos: str) -> set[str]:
+        """
+        Finds all capture moves of the piece at currPos which is a string representing 
+        a square on the board, such as a8 using allMoves which is a list containing 
+        every legal move of every piece
+        """
+        legalMoves = set()
+        for location in allMoves:
+            pos = str(location)[2:]
+            try:
+                # add move if it's legal
+                if (ch.Move.from_uci(currPos + pos) in allMoves and self.board[pos] != '0'):
+                    legalMoves.add(pos)
+            except ch.InvalidMoveError:
+                pass
+        return legalMoves
+
+    def searchCaptures(self, whiteTurn: bool, alpha: int, beta: int, firstCall: bool) -> float:
+        evaluation = self.evaluate(whiteTurn)
+        squares = list(self.board.keys())
+        possibleMoves = {}
+        end = False
+        if (beta <= alpha):
+            return evaluation
+        if (whiteTurn):
+            for square in squares:
+                if (self.board[square] != '0' and self.board[square].isupper()):
+                    possibleMoves[square] = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
+            whiteSquares = list(possibleMoves.keys())
+            for whiteSquare in whiteSquares:
+                for move in possibleMoves[whiteSquare]:
+                    self.pythonBoard.push(ch.Move.from_uci(whiteSquare + move))
+                    self.board = fenConverter(self.pythonBoard.board_fen())
+                    evaluation = self.searchCaptures(not whiteTurn, alpha, beta)
+                    self.pythonBoard.pop()
+                    self.board = fenConverter(self.pythonBoard.board_fen())
+                    alpha = max(alpha, evaluation)
+                    if (beta <= alpha):
+                        end = True
+                        break
+                if (end):
+                    break
+        else:
+            for square in squares:
+                if (self.board[square] != '0' and self.board[square].isupper()):
+                    possibleMoves[square] = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
+            blackSquares = list(possibleMoves.keys())
+            for blackSquare in blackSquares:
+                for move in possibleMoves[blackSquare]:
+                    self.pythonBoard.push(ch.Move.from_uci(blackSquare + move))
+                    self.board = fenConverter(self.pythonBoard.board_fen())
+                    evaluation = self.searchCaptures(not whiteTurn, alpha, beta)
+                    self.pythonBoard.pop()
+                    self.board = fenConverter(self.pythonBoard.board_fen())
+                    alpha = max(alpha, evaluation)
+                    if (beta <= alpha):
+                        end = True
+                        break
+                if (end):
+                    break
+        return evaluation
+    def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int) -> float:
+        """
+        search is the function that will give scores to position after searching with a
+        depth of depth. It uses the minimax algorithm with alpha beta pruning.
+        """
         possibleMoves = {}
         end = False
         squares = list(self.board.keys())
@@ -110,6 +240,7 @@ class Engine():
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
                     alpha = max(alpha, evaluation)
+                    # Pruning
                     if (beta <= alpha):
                         end = True
                         break
@@ -121,7 +252,6 @@ class Engine():
             for square in squares:
                 if (self.board[square] != '0' and self.board[square].islower()):
                     possibleMoves[square] = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
-            print(possibleMoves)
             bestEvaluation = float('inf')
             blackSquares = list(possibleMoves.keys())
             # go through all possible moves of each black piece
@@ -130,8 +260,10 @@ class Engine():
                     self.pythonBoard.push(ch.Move.from_uci(blackSquare + move))
                     self.board = fenConverter(self.pythonBoard.board_fen())
                     evaluation = self.search(depth - 1, not whiteTurn, alpha, beta)
+                    # if we get better score
                     if (evaluation < bestEvaluation):
                         bestEvaluation = evaluation
+                        # Choose the move. Only legal moves for the next turn will be at depth DEPTH
                         if (depth == DEPTH):
                             self.move = ch.Move.from_uci(blackSquare + move)
                             self.materialValue = bestEvaluation

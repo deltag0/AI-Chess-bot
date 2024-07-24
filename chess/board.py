@@ -36,7 +36,7 @@ class Game():
         self.initialRow = initialRow
         self.initialCol = initialCol
 
-    def showBoard(self, surface):
+    def showBoard(self, surface: pygame.display) -> None:
         """
        The showBoard method displays the 8x8 chess board with green and white tiles. The default setting
        faces white towards the human player.
@@ -59,7 +59,7 @@ class Game():
                 pygame.draw.rect(surface, color, rect)
                 lastIdx += 1
 
-    def show_pieces(self, surface):
+    def show_pieces(self, surface: pygame.display) -> None:
         """
         show_pieces shows all pieces that are on the board.
         """
@@ -74,7 +74,7 @@ class Game():
                     color = "black"
                 else:
                     color = "white"
-                moves = findLegalMoves(self.board.legal_moves, pos)
+                moves = set()
                 piece = Piece(currBoard[pos], color, 0, moves)
                 img = pygame.image.load(piece.texture)
                 img_center = col * SQSIZE + SQSIZE // 2, row * SQSIZE + SQSIZE // 2

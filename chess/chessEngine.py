@@ -187,6 +187,7 @@ class MainWindow():
                         game.showBoard(self.screen)
                         game.show_pieces(self.screen)
 
+
                         dragging = False
                         dragger.dragging = dragging
                         draggedPiece = None

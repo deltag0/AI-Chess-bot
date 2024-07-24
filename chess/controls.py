@@ -14,7 +14,7 @@ class Dragger:
         self.dragging = dragging
         self.piece = piece
 
-    def updateBlit(self, surface):
+    def updateBlit(self, surface) -> None:
         """
         updateBlit updates the image position of the piece and loads it in
         """
