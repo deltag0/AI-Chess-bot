@@ -179,6 +179,8 @@ class MainWindow():
                         currRow = str(8 - (mouseY // SQSIZE))
                         currCol = chr(mouseX // SQSIZE + ord('a'))
                         square = currCol + currRow
+                        if (currRow == '8' and self.currBoard[dragger.initialCol + dragger.initialRow] == 'P'):
+                            square += 'q'
                         print(dragger.initialCol + dragger.initialRow)
                         # if there's a piece on the square and the move made is valid, update the position
                         if (dragger.piece != None and square in dragger.piece.moves):
@@ -200,16 +202,16 @@ class MainWindow():
                         print(self.engine.search(DEPTH, False, float("-inf"), float("inf")))
                         self.board.push(self.engine.move)
                         print("done: ", self.engine.materialValue)
-                    if (moveCount == 1):
-                        self.board.push(ch.Move.from_uci("e7e5"))
-                    elif (moveCount == 3):
-                        self.board.push(ch.Move.from_uci("b8c6"))
-                    elif (moveCount == 5):
-                        self.board.push(ch.Move.from_uci("h7h6"))
-                    elif (moveCount == 7):
-                        self.board.push(ch.Move.from_uci("f7f5"))
-                    elif (moveCount == 9):
-                        self.board.push(ch.Move.from_uci("d7d5"))
+                    # if (moveCount == 1):
+                    #     self.board.push(ch.Move.from_uci("e7e5"))
+                    # elif (moveCount == 3):
+                    #     self.board.push(ch.Move.from_uci("b8c6"))
+                    # elif (moveCount == 5):
+                    #     self.board.push(ch.Move.from_uci("h7h6"))
+                    # elif (moveCount == 7):
+                    #     self.board.push(ch.Move.from_uci("f7f5"))
+                    # elif (moveCount == 9):
+                    #     self.board.push(ch.Move.from_uci("d7d5"))
                     self.currBoard = fenConverter(self.board.board_fen())
                     game.showBoard(self.screen)
                     game.show_pieces(self.screen)
@@ -219,5 +221,6 @@ class MainWindow():
 
 
 newBoard = ch.Board()
+newBoard.set_board_fen("8/3K4/4P3/8/8/8/6k1/7q")
 window = MainWindow(newBoard)
 window.startGame()
