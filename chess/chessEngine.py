@@ -4,11 +4,13 @@ import chess
 import chess.svg
 import pygame
 import sys
+import time
 from constants import *
 from board import Game, findLegalMoves
 from objects import *
 from controls import Dragger
 from engine import Engine
+from collections import defaultdict
 
 def fenConverter(string: str) -> dict[str: str]:
     """
@@ -44,57 +46,6 @@ def hasPiece(board: dict[str: str], pos: str) -> bool:
         return False
 
 
-class Main():
-    def __init__(self, board):
-        """
-        The board is going to be the visual chess board that will be seen
-        by users.
-        """
-        self.board = board
-
-    def startGame(self):
-        color = None
-        while (color != "b" and color != "w"):
-            color = input("Play as white (\"w\") or black (\"b\"): ")
-        if (color == "b"):
-            while (self.board.is_checkmate() == False):
-                self.playHumanMove()
-                print(self.board)
-            print(self.board)
-            print(self.board.outcome())
-
-        elif (color == "w"):
-            while (self.board.is_checkmate() == False):
-                self.playHumanMove()
-                print(self.board)
-            print(self.board)
-            print(self.board.outcome())
-
-    def playHumanMove(self):
-        try:
-            print(self.board.legal_moves)
-            print("To undo your last move, type \"undo\".")
-            play = input("Your move: ")
-            if (play == "undo"):
-                self.board.pop()
-                self.board.pop()
-                self.playHumanMove()
-                return
-            self.board.push_san(play)
-        except:
-            self.playHumanMove()
-
-    def showBoard(maxDepth = 150):
-        board = ch.board()
-
-        for _ in range(depth):
-            all_moves = list(board.legal_moves)
-
-    def engine(self, candidate, depth):
-        if (depth == self.maxDepth or self.board.legal_moves.count() == 0):
-            return self.evalFunct()
-
-
 class MainWindow():
     """
     The MainWindow is the program that will create the chessboard.
@@ -102,6 +53,9 @@ class MainWindow():
     def __init__(self, board: chess.Board):
         self.board = board
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        self.whitePieces = 1
+        self.blackPieces = 3
+        self.transpositions = defaultdict(lambda: [None, None])
         pygame.display.set_caption("Chess")
 
     def startGame(self):
@@ -121,7 +75,7 @@ class MainWindow():
                and self.board.is_fivefold_repetition() == False):
             self.currBoard = fenConverter(self.board.board_fen())
             self.game = Game(self.currBoard, self.board, dragging, draggedPiece, mouseX, mouseY, initialRow, initialCol)
-            self.engine = Engine(self.currBoard, self.board)
+            self.engine = Engine(self.currBoard, self.board, self.whitePieces, self.blackPieces, self.transpositions)
             dragger = self.game.dragger
             game = self.game
             game.showBoard(self.screen)
@@ -185,6 +139,8 @@ class MainWindow():
                         # if there's a piece on the square and the move made is valid, update the position
                         if (dragger.piece != None and square in dragger.piece.moves):
                             moveCount += 1
+                            if (self.currBoard[square[:2]] != '0'):
+                                self.blackPieces -= 1
                             self.board.push(ch.Move.from_uci(dragger.initialCol + dragger.initialRow + square))
                         game.showBoard(self.screen)
                         game.show_pieces(self.screen)
@@ -199,7 +155,12 @@ class MainWindow():
                         game.showBoard(self.screen)
                         game.show_pieces(self.screen)
                         # self.currBoard = fenConverter(self.board.board_fen())
+                        start_time = time.time()
                         print(self.engine.search(DEPTH, False, float("-inf"), float("inf")))
+                        print(time.time() - start_time)
+                        if (self.currBoard[self.engine.move.uci()[2:]] != '0'):
+                            self.whitePieces -= 1
+                        self.transpositions = self.engine.transpositions
                         self.board.push(self.engine.move)
                         print("done: ", self.engine.materialValue)
                     # if (moveCount == 1):
@@ -221,6 +182,6 @@ class MainWindow():
 
 
 newBoard = ch.Board()
-newBoard.set_board_fen("8/3K4/4P3/8/8/8/6k1/7q")
+newBoard.set_board_fen("1rr5/2k5/8/8/8/3K4/8/8")
 window = MainWindow(newBoard)
 window.startGame()

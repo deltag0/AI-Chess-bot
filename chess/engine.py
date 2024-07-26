@@ -9,7 +9,7 @@ def fenConverter(string: str) -> dict[str: str]:
     fenConverter converts the string string from fen notation (https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation)
     into a dictionary whose keys are squares on the chess board such as a8, a7, c3, etc. Uppercase letters denote white pieces 
     while lowercase letters denote black pieces. A 0 means the square is empty. Function will be called every time the board is 
-    updated to see if any visual changes need to be made.
+    updated.
     """
     boardRows = string.split("/")
     piecePositions = {}
@@ -44,17 +44,24 @@ class Engine():
     """
     Class that controls the engine with the moves
     """
-    def __init__(self, board: dict[str: str], pythonBoard: ch.Board) -> None:
+    def __init__(self, board: dict[str: str], pythonBoard: ch.Board, whitePieces: int, blackPieces: int, transpositions: defaultdict) -> None:
         self.board = board
         self.pythonBoard = pythonBoard
         self.materialValue = 0
         self.move = None
-        self.transpositions = defaultdict(lambda: False) # problem with transposition tables is that when we come back to the position and we want to make a new move, but we break
+        self.transpositions = transpositions
+        self.whitePieces = whitePieces
+        self.blackPieces = blackPieces
+
+    def updateBoard(self, originalPos: str, newPos: str) -> None:
+        piece = self.board[originalPos]
+        self.board[originalPos] = '0'
+        self.board[newPos] = piece
 
     def attackedByPawn(self, start: str, color: str) -> bool:
         """
         attackedByPawn detects if a piece at position start with the color color is attacked by a pawn.
-        A pinned pawn will NOT count as an attacker.
+        A pinned pawn will count as an attacker.
         """
         if (color == "white"):
             left = ""
@@ -94,6 +101,7 @@ class Engine():
         Move to capture a piece, 
         Move to promote,
         Move that gets a piece attacked by a pawn
+        Checkmate
         """
         valList = []
         moveName = self.board[start]
@@ -110,6 +118,10 @@ class Engine():
                 val = 10 * val - abs(movePiece.value)
             else:
                 val = 0
+            self.pythonBoard.push(ch.Move.from_uci(start + move))
+            if (self.pythonBoard.is_checkmate):
+                val += 10000000
+            self.pythonBoard.pop()
             # check for promotion
             if ((move[1] == '8' and moveName == 'P') or (move[1] == '1' or moveName == 'p')):
                 val += 9
@@ -121,15 +133,7 @@ class Engine():
         combined = list(zip(moves, valList))
         return [move[0] for move in sorted(combined, key=lambda x: x[1], reverse=True)]
 
-    def findWhitePieceQty(self):
-        pieces = 0
-        squares = list(self.board.keys())
-        for square in squares:
-            if (self.board[square] != '0' and findColor(self.board[square]) == "white"):
-                pieces += 1
-        return pieces
-
-    def endGameEval(self, endgameWeight: float) -> int:
+    def endGameEval(self, endgameWeight: float, isWhite: bool) -> int:
         """
         endGameEval gives a higher score to moves that force the white 
         king to the backRanks when the game is closer to the end (when
@@ -143,16 +147,22 @@ class Engine():
         whiteKingSquare = ch.square_name(self.pythonBoard.king(ch.WHITE))
         whiteKingRank = int(whiteKingSquare[1])
         whiteKingFile = ord(whiteKingSquare[0]) - ord('a') + 1
-
-        whiteKingDistToCentreFile = max(3 - whiteKingFile, whiteKingFile - 4)
-        whiteKingDistToCentreRank = max(3 - whiteKingRank, whiteKingRank - 4)
-        whiteKingDistFromCentre = whiteKingDistToCentreFile + whiteKingDistToCentreRank
-        eval += whiteKingDistFromCentre
+        if (isWhite == False):
+            EnemyDistToCentreFile = max(3 - whiteKingFile, whiteKingFile - 4)
+            EnemyDistToCentreRank = max(3 - whiteKingRank, whiteKingRank - 4)
+            EnemyDistFromCentre = EnemyDistToCentreFile + EnemyDistToCentreRank
+        else:
+            EnemyDistToCentreFile = max(3 - blackKingFile, blackKingFile - 4)
+            EnemyDistToCentreRank = max(3 - blackKingRank, blackKingRank - 4)
+            EnemyDistFromCentre = EnemyDistToCentreFile + EnemyDistToCentreRank
+        eval += EnemyDistFromCentre
 
         fileDist = abs(blackKingFile - whiteKingFile)
         rankDist = abs(blackKingRank - whiteKingRank)
         kingDist = fileDist + rankDist
         eval += 14 - kingDist
+        # if (isWhite == False):
+        #     eval = -eval
         return int(eval * endgameWeight)
 
     def evaluate(self, isWhite: bool) -> float:
@@ -163,11 +173,11 @@ class Engine():
         squares = list(self.board.keys())
         if (self.pythonBoard.is_stalemate()):
             return 0
-        if (self.pythonBoard.is_checkmate() and self.move != None):
-            if (isWhite):
+        if (self.pythonBoard.outcome() != None):
+            if (self.pythonBoard.outcome().winner == True):
+                    return float('inf')
+            elif (self.pythonBoard.outcome().winner == False):
                 return float('-inf')
-            else:
-                return float('inf')
         for square in squares:
             # if there's a piece on the square
             if (self.board[square] != '0'):
@@ -179,8 +189,10 @@ class Engine():
                 moves = set()
                 piece = Piece(name, color, 0, moves)
                 materialValue += piece.value * 10
-        whitePieces = self.findWhitePieceQty()
-        endGameBonus = self.endGameEval(16 - whitePieces)
+        if (isWhite):
+            endGameBonus = self.endGameEval(16 - self.whitePieces, isWhite)
+        else:
+            endGameBonus = self.endGameEval(16 - self.blackPieces, isWhite)
         return materialValue + endGameBonus
 
     def isCapture(self, square: str) -> bool:
@@ -216,8 +228,6 @@ class Engine():
         squares = list(self.board.keys())
         possibleMoves = {}
         end = False
-        # if (beta <= alpha):
-        #     return beta
         if (whiteTurn):
             bestEvaluation = float('-inf')
             alpha = max(alpha, evaluation)
@@ -231,11 +241,13 @@ class Engine():
                 for move in possibleMoves[whiteSquare]:
                     self.pythonBoard.push(ch.Move.from_uci(whiteSquare + move))
                     self.board = fenConverter(self.pythonBoard.board_fen())
+                    # self.updateBoard(whiteSquare, move)
                     evaluation = self.searchCaptures(not whiteTurn, alpha, beta)
                     if (evaluation > bestEvaluation):
                         bestEvaluation = evaluation
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
+                    # self.updateBoard(move, whiteSquare)
                     alpha = max(alpha, evaluation)
                     if (beta <= alpha):
                         end = True
@@ -243,10 +255,10 @@ class Engine():
                 if (end):
                     break
         else:
+            bestEvaluation = float('inf')
             beta = min(beta, evaluation)
             if (alpha >= beta):
                 return beta
-            bestEvaluation = float('inf')
             for square in squares:
                 if (self.board[square] != '0' and self.board[square].isupper()):
                     possibleMoves[square] = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
@@ -255,11 +267,13 @@ class Engine():
                 for move in possibleMoves[blackSquare]:
                     self.pythonBoard.push(ch.Move.from_uci(blackSquare + move))
                     self.board = fenConverter(self.pythonBoard.board_fen())
+                    # self.updateBoard(blackSquare, move)
                     evaluation = self.searchCaptures(not whiteTurn, alpha, beta)
                     if (evaluation < bestEvaluation):
                         bestEvaluation = evaluation
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
+                    # self.updateBoard(move, blackSquare)
                     beta = min(beta, evaluation)
                     if (beta <= alpha):
                         end = True
@@ -267,10 +281,12 @@ class Engine():
                 if (end):
                     break
         return evaluation
+
+
     def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int) -> float:
         """
-        search is the function that will give scores to position after searching with a
-        depth of depth. It uses the minimax algorithm with alpha beta pruning.
+        search function will give scores to position after searching with a
+        depth of depth.
         """
         possibleMoves = {}
         end = False
@@ -289,19 +305,30 @@ class Engine():
             for whiteSquare in whiteSquares:
                 for move in possibleMoves[whiteSquare]:
                     self.pythonBoard.push(ch.Move.from_uci(whiteSquare + move))
-                    self.board = fenConverter(self.pythonBoard.board_fen())
                     fenBoard = self.pythonBoard.board_fen()
-                    if (self.transpositions[fenBoard] == False):
-                        self.transpositions[fenBoard] = True
-                    else:
+                    self.board = fenConverter(fenBoard)
+                    self.updateBoard(whiteSquare, move)
+
+                    if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
+                        evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
+                        if (evaluation > bestEvaluation):
+                            bestEvaluation = evaluation
                         self.pythonBoard.pop()
                         self.board = fenConverter(self.pythonBoard.board_fen())
-                        break
+                        alpha = max(alpha, evaluation)
+                        if (beta <= alpha):
+                            end = True
+                            break
+                        continue
+
                     evaluation = self.search(depth - 1, not whiteTurn, alpha, beta) # alpha best for white, beta best for black
+                    if (self.transpositions[(fenBoard, whiteTurn)][0] == None):
+                        self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
                     if (evaluation > bestEvaluation):
                         bestEvaluation = evaluation
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
+                    # self.updateBoard(move, whiteSquare)
                     alpha = max(alpha, evaluation)
                     # Pruning
                     if (beta <= alpha):
@@ -321,17 +348,35 @@ class Engine():
             for blackSquare in blackSquares:
                 for move in possibleMoves[blackSquare]:
                     self.pythonBoard.push(ch.Move.from_uci(blackSquare + move))
-                    self.board = fenConverter(self.pythonBoard.board_fen())
                     fenBoard = self.pythonBoard.board_fen()
-                    if (self.transpositions[fenBoard] == False):
-                        self.transpositions[fenBoard] = True
-                    else:
+                    self.board = fenConverter(fenBoard)
+                    if (depth == DEPTH):
+                        print(self.pythonBoard, '\n')
+                    if (self.pythonBoard.is_checkmate() and depth == DEPTH):
+                        print("CHECKMATE")
+                        self.move = ch.Move.from_uci(blackSquare + move)
+                        self.pythonBoard.pop()
+                        return float('-inf')
+
+                    if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
+                        evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
+                        if (evaluation < bestEvaluation):
+                            bestEvaluation = evaluation
+                            if (depth == DEPTH):
+                                self.move = ch.Move.from_uci(blackSquare + move)
+                                self.materialValue = bestEvaluation
+
                         self.pythonBoard.pop()
                         self.board = fenConverter(self.pythonBoard.board_fen())
-                        break
+                        beta = min(beta, evaluation)
+                        if (beta <= alpha):
+                            end = True
+                            break
+                        continue
+
                     evaluation = self.search(depth - 1, not whiteTurn, alpha, beta)
-                    # if (depth == DEPTH):
-                    #     print(self.pythonBoard, '\n', evaluation)
+                    if (self.transpositions[(fenBoard, whiteTurn)] == None):
+                        self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
                     # if we get better score
                     if (evaluation < bestEvaluation):
                         bestEvaluation = evaluation
@@ -341,8 +386,9 @@ class Engine():
                             self.materialValue = bestEvaluation
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
+                    # self.updateBoard(move, blackSquare)
                     beta = min(beta, evaluation)
-                    if (beta <= alpha):
+                    if (beta < alpha):
                         end = True
                         break
                 if (end):
