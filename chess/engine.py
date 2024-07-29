@@ -3,6 +3,7 @@ from board import findLegalMoves
 import chess as ch
 from constants import *
 from collections import defaultdict
+from heatmaps import *
 
 def fenConverter(string: str) -> dict[str: str]:
     """
@@ -64,7 +65,7 @@ class Engine():
             right = ""
             # check row
             if (start[1] != '8'):
-                # check column
+                # check column (pawns on extremes can only capture in 1 direction)
                 if (start[0] != 'a'):
                     left = chr(ord(start[0]) - 1) + str(int(start[1]) + 1)
                     if (self.board[left] == 'p' and self.pythonBoard.is_pinned(ch.BLACK, ch.parse_square(left)) == False):
@@ -183,6 +184,26 @@ class Engine():
                     color = "white"
                 moves = set()
                 piece = Piece(name, color, 0, moves)
+                if color == 'black':
+                    if name == 'p':
+                        pMap = pawnMap(square)
+                        materialValue += pMap.mapValue()
+                    elif name == 'n':
+                        nMap = knightMap(square)
+                        materialValue += nMap.mapValue()
+                    elif name == 'b':
+                        bMap = bishopMap(square)
+                        materialValue += bMap.mapValue()
+                    elif name == 'q':
+                        qMap = queenMap(square)
+                        materialValue += qMap.mapValue()
+                    elif name == 'k':
+                        kMap = earlyKingMap(square)
+                        materialValue += kMap.mapValue()
+                    elif name == 'r':
+                        rMap = rookMap(square)
+                        materialValue += rMap.mapValue()
+
                 materialValue += piece.value * 10
         if (isWhite):
             endGameBonus = self.endGameEval(16 - self.whitePieces, isWhite)
@@ -226,9 +247,11 @@ class Engine():
         if (whiteTurn):
             bestEvaluation = float('-inf')
             alpha = max(alpha, evaluation)
+            # no longer need to check for rest of captures
             if (alpha >= beta):
                 return alpha
             for square in squares:
+                # if there's a white piece
                 if (self.board[square] != '0' and self.board[square].isupper()):
                     possibleMoves[square] = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
             whiteSquares = list(possibleMoves.keys())
@@ -242,6 +265,7 @@ class Engine():
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
                     alpha = max(alpha, evaluation)
+                    # pruning
                     if (beta <= alpha):
                         end = True
                         break
@@ -298,7 +322,7 @@ class Engine():
                     self.pythonBoard.push(ch.Move.from_uci(whiteSquare + move))
                     fenBoard = self.pythonBoard.board_fen()
                     self.board = fenConverter(fenBoard)
-
+                    # if we've already seen this position and can't evaluate it at a greater depth
                     if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
                         evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
                         if (evaluation > bestEvaluation):
@@ -312,6 +336,7 @@ class Engine():
                         continue
 
                     evaluation = self.search(depth - 1, not whiteTurn, alpha, beta) # alpha best for white, beta best for black
+                    # add position to our transposition table
                     if (self.transpositions[(fenBoard, whiteTurn)][0] == None):
                         self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
                     if (evaluation > bestEvaluation):
@@ -361,10 +386,6 @@ class Engine():
                         continue
 
                     evaluation = self.search(depth - 1, not whiteTurn, alpha, beta)
-
-                    if (depth == DEPTH):
-                        pass
-                        # print(self.pythonBoard, '\n', evaluation)
 
                     if (self.transpositions[(fenBoard, whiteTurn)] == None):
                         self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]

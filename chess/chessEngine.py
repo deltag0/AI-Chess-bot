@@ -164,6 +164,7 @@ class MainWindow():
                         dragger.piece = draggedPiece
                 else:
                     stop = False
+                    # if we're still checking for openings
                     if openingEnd == False:
                         currPos = " ".join(self.sanStack)
                         posLen = len(currPos)
@@ -174,12 +175,15 @@ class MainWindow():
                             for line in f:
                                 print(i)
                                 i += 1
+                                # if we found a record from the file games.txt
                                 if (currPos == line[:posLen]):
                                     end = findLenUntilSpace(line, posLen + 1)
+                                    # if the position was found, but has no other move in the record
                                     if end == posLen + 1:
                                         continue
                                     self.sanStack.append(line[posLen + 1:end + 1])
                                     move = self.board.parse_san(line[posLen + 1:end + 1])
+                                    # if there's a piece
                                     if self.currBoard[move.uci()[2:]] != '0':
                                         self.whitePieces -= 1
                                     self.board.push(move)
@@ -189,6 +193,7 @@ class MainWindow():
                                     print(self.sanStack)
                                     stop = True
                                     break
+                            # if we found an opening position, continue
                             if stop:
                                 continue
                             openingEnd = True
@@ -196,6 +201,7 @@ class MainWindow():
                         start_time = time.time()
                         print(self.engine.search(DEPTH, False, float("-inf"), float("inf")))
                         print(time.time() - start_time)
+                        # if there's a piece
                         if (self.currBoard[self.engine.move.uci()[2:]] != '0'):
                             self.whitePieces -= 1
                         self.transpositions = self.engine.transpositions
@@ -211,6 +217,5 @@ class MainWindow():
 
 
 newBoard = ch.Board()
-# newBoard.set_board_fen("8/3K4/4P3/8/8/8/6k1/7q")
 window = MainWindow(newBoard)
 window.startGame()
