@@ -36,6 +36,15 @@ def fenConverter(string: str) -> dict[str: str]:
         prevNum = 0
     return piecePositions
 
+def findLenUntilSpace(object: str, start: int) -> int:
+    end = start
+    for i in range(start, len(object)):
+        if object[i] != ' ':
+            end = i
+        else:
+            break
+    return end
+
 def hasPiece(board: dict[str: str], pos: str) -> bool:
     """
         Returns true if the position has a piece, false otherwise 
@@ -53,8 +62,9 @@ class MainWindow():
     def __init__(self, board: chess.Board):
         self.board = board
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        self.whitePieces = 1
-        self.blackPieces = 3
+        self.whitePieces = 16
+        self.blackPieces = 16
+        self.sanStack = []
         self.transpositions = defaultdict(lambda: [None, None])
         pygame.display.set_caption("Chess")
 
@@ -70,6 +80,7 @@ class MainWindow():
         moveCount = 0
         initialRow = 0
         initialCol = 0
+        openingEnd = False
         # main game loop
         while (self.board.is_checkmate() == False and self.board.is_stalemate() == False
                and self.board.is_fivefold_repetition() == False):
@@ -141,6 +152,7 @@ class MainWindow():
                             moveCount += 1
                             if (self.currBoard[square[:2]] != '0'):
                                 self.blackPieces -= 1
+                            self.sanStack.append(self.board.san(ch.Move.from_uci(dragger.initialCol + dragger.initialRow + square)))
                             self.board.push(ch.Move.from_uci(dragger.initialCol + dragger.initialRow + square))
                         game.showBoard(self.screen)
                         game.show_pieces(self.screen)
@@ -151,37 +163,54 @@ class MainWindow():
                         draggedPiece = None
                         dragger.piece = draggedPiece
                 else:
-                    if (moveCount > 10):
+                    stop = False
+                    if openingEnd == False:
+                        currPos = " ".join(self.sanStack)
+                        posLen = len(currPos)
                         game.showBoard(self.screen)
                         game.show_pieces(self.screen)
-                        # self.currBoard = fenConverter(self.board.board_fen())
+                        with open('games.txt', 'r') as f:
+                            i = 0
+                            for line in f:
+                                print(i)
+                                i += 1
+                                if (currPos == line[:posLen]):
+                                    end = findLenUntilSpace(line, posLen + 1)
+                                    if end == posLen + 1:
+                                        continue
+                                    self.sanStack.append(line[posLen + 1:end + 1])
+                                    move = self.board.parse_san(line[posLen + 1:end + 1])
+                                    if self.currBoard[move.uci()[2:]] != '0':
+                                        self.whitePieces -= 1
+                                    self.board.push(move)
+                                    self.currBoard = fenConverter(self.board.board_fen())
+                                    game.showBoard(self.screen)
+                                    game.show_pieces(self.screen)
+                                    print(self.sanStack)
+                                    stop = True
+                                    break
+                            if stop:
+                                continue
+                            openingEnd = True
+                    else:
                         start_time = time.time()
                         print(self.engine.search(DEPTH, False, float("-inf"), float("inf")))
                         print(time.time() - start_time)
                         if (self.currBoard[self.engine.move.uci()[2:]] != '0'):
                             self.whitePieces -= 1
                         self.transpositions = self.engine.transpositions
+                        self.sanStack.append(self.board.san(self.engine.move))
                         self.board.push(self.engine.move)
                         print("done: ", self.engine.materialValue)
-                    # if (moveCount == 1):
-                    #     self.board.push(ch.Move.from_uci("e7e5"))
-                    # elif (moveCount == 3):
-                    #     self.board.push(ch.Move.from_uci("b8c6"))
-                    # elif (moveCount == 5):
-                    #     self.board.push(ch.Move.from_uci("h7h6"))
-                    # elif (moveCount == 7):
-                    #     self.board.push(ch.Move.from_uci("f7f5"))
-                    # elif (moveCount == 9):
-                    #     self.board.push(ch.Move.from_uci("d7d5"))
-                    self.currBoard = fenConverter(self.board.board_fen())
-                    game.showBoard(self.screen)
-                    game.show_pieces(self.screen)
-                    moveCount += 1
+                        self.currBoard = fenConverter(self.board.board_fen())
+                        game.showBoard(self.screen)
+                        game.show_pieces(self.screen)
+
             pygame.display.update()
         print(board.outcome().winner)
 
 
 newBoard = ch.Board()
-newBoard.set_board_fen("1rr5/2k5/8/8/8/3K4/8/8")
+# newBoard.set_board_fen("8/3K4/4P3/8/8/8/6k1/7q")
 window = MainWindow(newBoard)
 window.startGame()
