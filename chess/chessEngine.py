@@ -202,7 +202,11 @@ class MainWindow():
                         print(self.engine.search(DEPTH, False, float("-inf"), float("inf")))
                         print(time.time() - start_time)
                         # if there's a piece
-                        if (self.currBoard[self.engine.move.uci()[2:]] != '0'):
+                        if self.engine.move.uci()[-1].isnumeric() == False:
+                            moveName = self.engine.move.uci()[2:-1]
+                        else:
+                            moveName = self.engine.move.uci()[2:]
+                        if (self.currBoard[moveName] != '0'):
                             self.whitePieces -= 1
                         self.transpositions = self.engine.transpositions
                         self.sanStack.append(self.board.san(self.engine.move))
@@ -217,5 +221,6 @@ class MainWindow():
 
 
 newBoard = ch.Board()
+# newBoard.set_board_fen("5rk1/pQp1q1pp/2B1p3/4P1p1/P1p2P2/N4R1K/P1P5/R4nr1")
 window = MainWindow(newBoard)
 window.startGame()

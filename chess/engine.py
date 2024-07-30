@@ -58,7 +58,7 @@ class Engine():
     def attackedByPawn(self, start: str, color: str) -> bool:
         """
         attackedByPawn detects if a piece at position start with the color color is attacked by a pawn.
-        A pinned pawn will count as an attacker.
+        A pinned pawn will not count as an attacker.
         """
         if (color == "white"):
             left = ""
@@ -116,7 +116,7 @@ class Engine():
             else:
                 val = 0
             self.pythonBoard.push(ch.Move.from_uci(start + move))
-            if (self.pythonBoard.is_checkmate):
+            if (self.pythonBoard.is_checkmate()):
                 val += 10000000
             self.pythonBoard.pop()
             # check for promotion
@@ -128,7 +128,7 @@ class Engine():
             valList.append(val)
         moves = list(moves)
         combined = list(zip(moves, valList))
-        return [move[0] for move in sorted(combined, key=lambda x: x[1], reverse=True)]
+        return combined
 
     def endGameEval(self, endgameWeight: float, isWhite: bool) -> int:
         """
@@ -205,11 +205,11 @@ class Engine():
                         materialValue += rMap.mapValue()
 
                 materialValue += piece.value * 10
-        if (isWhite):
-            endGameBonus = self.endGameEval(16 - self.whitePieces, isWhite)
-        else:
-            endGameBonus = self.endGameEval(16 - self.blackPieces, isWhite)
-        return materialValue + endGameBonus
+        # if (isWhite):
+        #     endGameBonus = self.endGameEval(16 - self.whitePieces, isWhite)
+        # else:
+        #     endGameBonus = self.endGameEval(16 - self.blackPieces, isWhite)
+        return materialValue  # + endGameBonus
 
     def isCapture(self, square: str) -> bool:
         if (self.board[square] != '0'):
@@ -253,7 +253,7 @@ class Engine():
             for square in squares:
                 # if there's a white piece
                 if (self.board[square] != '0' and self.board[square].isupper()):
-                    possibleMoves[square] = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
+                    possibleMoves[square] = [elem[0] for elem in self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)]
             whiteSquares = list(possibleMoves.keys())
             for whiteSquare in whiteSquares:
                 for move in possibleMoves[whiteSquare]:
@@ -278,7 +278,7 @@ class Engine():
                 return beta
             for square in squares:
                 if (self.board[square] != '0' and self.board[square].isupper()):
-                    possibleMoves[square] = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
+                    possibleMoves[square] = [elem[0] for elem in self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)]
             blackSquares = list(possibleMoves.keys())
             for blackSquare in blackSquares:
                 for move in possibleMoves[blackSquare]:
@@ -303,105 +303,99 @@ class Engine():
         search function will give scores to position after searching with a
         depth of depth.
         """
-        possibleMoves = {}
-        end = False
+        test = defaultdict(lambda: [])
         squares = list(self.board.keys())
         # end of depth
         if (depth == 0):
             return self.searchCaptures(whiteTurn, alpha, beta)
         # trying to maximize the score
         if (whiteTurn):
+            whiteMoves = []
             for square in squares:
                 if (self.board[square] != '0' and self.board[square].isupper()):
-                    possibleMoves[square] = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
+                    squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
+                    for move, score in squareMoves:
+                        whiteMoves.append([ch.Move.from_uci(square + move), score])
+            whiteMoves = [move[0] for move in sorted(whiteMoves, key=lambda x: x[1], reverse=True)]
             bestEvaluation = float('-inf')
-            whiteSquares = list(possibleMoves.keys())
             # go through all possible moves of each white piece
-            for whiteSquare in whiteSquares:
-                for move in possibleMoves[whiteSquare]:
-                    self.pythonBoard.push(ch.Move.from_uci(whiteSquare + move))
-                    fenBoard = self.pythonBoard.board_fen()
-                    self.board = fenConverter(fenBoard)
-                    # if we've already seen this position and can't evaluate it at a greater depth
-                    if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
-                        evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
-                        if (evaluation > bestEvaluation):
-                            bestEvaluation = evaluation
-                        self.pythonBoard.pop()
-                        self.board = fenConverter(self.pythonBoard.board_fen())
-                        alpha = max(alpha, evaluation)
-                        if (beta <= alpha):
-                            end = True
-                            break
-                        continue
-
-                    evaluation = self.search(depth - 1, not whiteTurn, alpha, beta) # alpha best for white, beta best for black
-                    # add position to our transposition table
-                    if (self.transpositions[(fenBoard, whiteTurn)][0] == None):
-                        self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+            for move in whiteMoves:
+                self.pythonBoard.push(move)
+                fenBoard = self.pythonBoard.board_fen()
+                self.board = fenConverter(fenBoard)
+                # if we've already seen this position and can't evaluate it at a greater depth
+                if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
+                    evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
                     if (evaluation > bestEvaluation):
                         bestEvaluation = evaluation
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
                     alpha = max(alpha, evaluation)
-                    # Pruning
                     if (beta <= alpha):
-                        end = True
                         break
-                if (end):
+                    continue
+
+                evaluation = self.search(depth - 1, not whiteTurn, alpha, beta) # alpha best for white, beta best for black
+                # add position to our transposition table
+                if (self.transpositions[(fenBoard, whiteTurn)][0] == None):
+                    self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+                if (evaluation > bestEvaluation):
+                    bestEvaluation = evaluation
+                self.pythonBoard.pop()
+                self.board = fenConverter(self.pythonBoard.board_fen())
+                alpha = max(alpha, evaluation)
+                # Pruning
+                if (beta <= alpha):
                     break
             return bestEvaluation
         # trying to minimize the score
         else:
+            blackMoves = []
             for square in squares:
                 if (self.board[square] != '0' and self.board[square].islower()):
-                    possibleMoves[square] = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
+                    squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
+                    for move, score in squareMoves:
+                        blackMoves.append([ch.Move.from_uci(square + move), score])
+            blackMoves = [move[0] for move in sorted(blackMoves, key=lambda x: x[1], reverse=True)]
             bestEvaluation = float('inf')
-            blackSquares = list(possibleMoves.keys())
             # go through all possible moves of each black piece
-            for blackSquare in blackSquares:
-                for move in possibleMoves[blackSquare]:
-                    self.pythonBoard.push(ch.Move.from_uci(blackSquare + move))
-                    fenBoard = self.pythonBoard.board_fen()
-                    self.board = fenConverter(fenBoard)
-                    if (self.pythonBoard.is_checkmate() and depth == DEPTH):
-                        self.move = ch.Move.from_uci(blackSquare + move)
-                        self.pythonBoard.pop()
-                        return float('-inf')
+            for move in blackMoves:
+                self.pythonBoard.push(move)
+                fenBoard = self.pythonBoard.board_fen()
+                self.board = fenConverter(fenBoard)
+                if (self.pythonBoard.is_checkmate() and depth == DEPTH):
+                    self.move = move
+                    self.pythonBoard.pop()
+                    return float('-inf')
 
-                    if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
-                        evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
-                        if (evaluation < bestEvaluation):
-                            bestEvaluation = evaluation
-                            if (depth == DEPTH):
-                                self.move = ch.Move.from_uci(blackSquare + move)
-                                self.materialValue = bestEvaluation
-
-                        self.pythonBoard.pop()
-                        self.board = fenConverter(self.pythonBoard.board_fen())
-                        beta = min(beta, evaluation)
-                        if (beta <= alpha):
-                            end = True
-                            break
-                        continue
-
-                    evaluation = self.search(depth - 1, not whiteTurn, alpha, beta)
-
-                    if (self.transpositions[(fenBoard, whiteTurn)] == None):
-                        self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
-                    # if we get better score
+                if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
+                    evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
                     if (evaluation < bestEvaluation):
                         bestEvaluation = evaluation
-                        # Choose the move. Only legal moves for the next turn will be at depth DEPTH
                         if (depth == DEPTH):
-                            self.move = ch.Move.from_uci(blackSquare + move)
+                            self.move = move
                             self.materialValue = bestEvaluation
+
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
                     beta = min(beta, evaluation)
-                    if (beta < alpha):
-                        end = True
+                    if (beta <= alpha):
                         break
-                if (end):
+                    continue
+
+                evaluation = self.search(depth - 1, not whiteTurn, alpha, beta)
+                if (self.transpositions[(fenBoard, whiteTurn)] == None):
+                    self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+                # if we get better score
+                if (evaluation < bestEvaluation):
+                    bestEvaluation = evaluation
+                    # Choose the move. Only legal moves for the next turn will be at depth DEPTH
+                    if (depth == DEPTH):
+                        self.move = move
+                        self.materialValue = bestEvaluation
+                self.pythonBoard.pop()
+                self.board = fenConverter(self.pythonBoard.board_fen())
+                beta = min(beta, evaluation)
+                if (beta < alpha):
                     break
             return bestEvaluation
