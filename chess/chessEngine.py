@@ -64,29 +64,47 @@ class MainWindow():
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.whitePieces = 16
         self.blackPieces = 16
+
+        self.whitePieceCount = {
+            'Q': 1,
+            'N': 2,
+            'B': 2,
+            'R': 2,
+            'P': 8
+        }
+        self.blackPieceCount = {
+            'q': 1,
+            'n': 2,
+            'b': 2,
+            'r': 2,
+            'p': 8
+        }
+
         self.sanStack = []
         self.transpositions = defaultdict(lambda: [None, None])
+        self.prevDepthScores = defaultdict(lambda: None)
         pygame.display.set_caption("Chess")
 
     def startGame(self):
         """
         startGame method is the loop that runs the chess game
         """
-        board = self.board
+        board = self.board 
         dragging = False
         draggedPiece = None
         mouseX = 0
         mouseY = 0
-        moveCount = 0
-        initialRow = 0
-        initialCol = 0
-        openingEnd = False
+        moveCount = 0  # number of moves of game
+        initialRow = 0  # initial row we're dragging from with mouse
+        initialCol = 0  # initial column we're dragging from with mouse
+        openingEnd = False  # when True, stop looking through opening records
         # main game loop
         while (self.board.is_checkmate() == False and self.board.is_stalemate() == False
                and self.board.is_fivefold_repetition() == False):
             self.currBoard = fenConverter(self.board.board_fen())
             self.game = Game(self.currBoard, self.board, dragging, draggedPiece, mouseX, mouseY, initialRow, initialCol)
-            self.engine = Engine(self.currBoard, self.board, self.whitePieces, self.blackPieces, self.transpositions)
+            self.engine = Engine(self.currBoard, self.board, self.whitePieces, self.blackPieces, self.transpositions, self.prevDepthScores,
+                                 self.whitePieceCount, self.blackPieceCount)
             dragger = self.game.dragger
             game = self.game
             game.showBoard(self.screen)
@@ -149,14 +167,16 @@ class MainWindow():
                         print(dragger.initialCol + dragger.initialRow)
                         # if there's a piece on the square and the move made is valid, update the position
                         if (dragger.piece != None and square in dragger.piece.moves):
+                            name = self.currBoard[square[:2]]
                             moveCount += 1
-                            if (self.currBoard[square[:2]] != '0'):
+                            if (name != '0'):
                                 self.blackPieces -= 1
+                                # check for what kind of black piece was captured
+                                self.blackPieceCount[name] -= 1
                             self.sanStack.append(self.board.san(ch.Move.from_uci(dragger.initialCol + dragger.initialRow + square)))
                             self.board.push(ch.Move.from_uci(dragger.initialCol + dragger.initialRow + square))
                         game.showBoard(self.screen)
                         game.show_pieces(self.screen)
-
 
                         dragging = False
                         dragger.dragging = dragging
@@ -199,18 +219,37 @@ class MainWindow():
                             openingEnd = True
                     else:
                         start_time = time.time()
-                        print(self.engine.search(DEPTH, False, float("-inf"), float("inf")))
+
+                        for i in range(1, DEPTH + 1):
+                            self.engine = Engine(self.currBoard, self.board, self.whitePieces, self.blackPieces, self.transpositions, self.prevDepthScores,
+                                                 self.whitePieceCount, self.blackPieceCount)
+                            print(self.engine.search(i, False, float("-inf"), float("inf"), i))
+                            self.transpositions = self.engine.transpositions
+                            self.prevDepthScores = self.engine.prevDepthScores
+                            if self.engine.move != None:
+                                bestMove = self.engine.move
+                            print(board.turn, bestMove)
+                        # print(self.engine.search(DEPTH, False, float("-inf"), float("inf"), DEPTH))
+                        # bestMove = self.engine.move
+                        # self.transpositions = self.engine.transpositions
                         print(time.time() - start_time)
+                        self.prevDepthScores = defaultdict(lambda: None)
+                        # game has ended (engine can make no more moves)
+                        if bestMove == None:
+                            break
                         # if there's a piece
-                        if self.engine.move.uci()[-1].isnumeric() == False:
-                            moveName = self.engine.move.uci()[2:-1]
+                        if bestMove.uci()[-1].isnumeric() == False:
+                            moveName = bestMove.uci()[2:-1]
                         else:
-                            moveName = self.engine.move.uci()[2:]
-                        if (self.currBoard[moveName] != '0'):
+                            moveName = bestMove.uci()[2:]
+                        name = self.currBoard[moveName]
+                        if (name != '0'):
                             self.whitePieces -= 1
-                        self.transpositions = self.engine.transpositions
-                        self.sanStack.append(self.board.san(self.engine.move))
-                        self.board.push(self.engine.move)
+                            # check for what kind of white piece was captured
+                            self.whitePieceCount[name] -= 1
+                        # self.transpositions = self.engine.transpositions
+                        self.sanStack.append(self.board.san(bestMove))
+                        self.board.push(bestMove)
                         print("done: ", self.engine.materialValue)
                         self.currBoard = fenConverter(self.board.board_fen())
                         game.showBoard(self.screen)
@@ -221,6 +260,6 @@ class MainWindow():
 
 
 newBoard = ch.Board()
-# newBoard.set_board_fen("5rk1/pQp1q1pp/2B1p3/4P1p1/P1p2P2/N4R1K/P1P5/R4nr1")
+# newBoard.set_board_fen("1r4k1/4R3/4p1pb/4p3/1Pn5/5NK1/7P/8")
 window = MainWindow(newBoard)
 window.startGame()

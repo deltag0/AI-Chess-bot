@@ -45,7 +45,8 @@ class Engine():
     """
     Class that controls the engine with the moves
     """
-    def __init__(self, board: dict[str: str], pythonBoard: ch.Board, whitePieces: int, blackPieces: int, transpositions: defaultdict) -> None:
+    def __init__(self, board: dict[str: str], pythonBoard: ch.Board, whitePieces: int, blackPieces: int, transpositions: defaultdict, prevDepthScores: defaultdict,
+                 whitePieceCount: dict[str: int], blackPieceCount: dict[str: int]) -> None:
         self.board = board
         self.pythonBoard = pythonBoard
         self.materialValue = 0
@@ -53,7 +54,10 @@ class Engine():
         self.transpositions = transpositions
         self.whitePieces = whitePieces
         self.blackPieces = blackPieces
-
+        self.prevDepthScores = prevDepthScores
+        self.whitePieceCount = whitePieceCount
+        self.blackPieceCount = blackPieceCount
+        self.prevMove = None
 
     def attackedByPawn(self, start: str, color: str) -> bool:
         """
@@ -198,13 +202,18 @@ class Engine():
                         qMap = queenMap(square)
                         materialValue += qMap.mapValue()
                     elif name == 'k':
-                        kMap = earlyKingMap(square)
+                        if (self.whitePieceCount['Q'] == 0 or
+                            (self.whitePieceCount['B'] + self.whitePieceCount['N'] + self.whitePieceCount['R'] <= 2 and self.whitePieceCount['R'] <= 1)):
+                            kMap = lateKingMap(square)
+                        else:
+                            kMap = earlyKingMap(square)
                         materialValue += kMap.mapValue()
                     elif name == 'r':
                         rMap = rookMap(square)
                         materialValue += rMap.mapValue()
-
                 materialValue += piece.value * 10
+        if self.prevMove == "f6d7":
+            print(materialValue)
         # if (isWhite):
         #     endGameBonus = self.endGameEval(16 - self.whitePieces, isWhite)
         # else:
@@ -298,7 +307,7 @@ class Engine():
         return evaluation
 
 
-    def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int) -> float:
+    def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int, baseDepth: int) -> float:
         """
         search function will give scores to position after searching with a
         depth of depth.
@@ -326,6 +335,8 @@ class Engine():
                 # if we've already seen this position and can't evaluate it at a greater depth
                 if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
                     evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
+                    if self.prevMove == "f6d7":
+                        print("White seen, :", evaluation)
                     if (evaluation > bestEvaluation):
                         bestEvaluation = evaluation
                     self.pythonBoard.pop()
@@ -334,11 +345,15 @@ class Engine():
                     if (beta <= alpha):
                         break
                     continue
+                        
+                evaluation = self.search(depth - 1, not whiteTurn, alpha, beta, baseDepth) # alpha best for white, beta best for black
 
-                evaluation = self.search(depth - 1, not whiteTurn, alpha, beta) # alpha best for white, beta best for black
+                if self.prevMove == "f6d7":
+                    print("White :", move.uci(), evaluation)
+
                 # add position to our transposition table
-                if (self.transpositions[(fenBoard, whiteTurn)][0] == None):
-                    self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+                self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+
                 if (evaluation > bestEvaluation):
                     bestEvaluation = evaluation
                 self.pythonBoard.pop()
@@ -351,31 +366,39 @@ class Engine():
         # trying to minimize the score
         else:
             blackMoves = []
-            for square in squares:
-                if (self.board[square] != '0' and self.board[square].islower()):
-                    squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
-                    for move, score in squareMoves:
-                        blackMoves.append([ch.Move.from_uci(square + move), score])
-            blackMoves = [move[0] for move in sorted(blackMoves, key=lambda x: x[1], reverse=True)]
+            if baseDepth != 1 and depth == baseDepth:
+                squareMoves = list(zip(self.prevDepthScores.keys(), self.prevDepthScores.values()))
+                blackMoves = [ch.Move.from_uci(move[0]) for move in sorted(squareMoves, key=lambda x: x[1])]
+            else:
+                for square in squares:
+                    if (self.board[square] != '0' and self.board[square].islower()):
+                        squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
+                        for move, score in squareMoves:
+                            blackMoves.append([ch.Move.from_uci(square + move), score])
+                blackMoves = [move[0] for move in sorted(blackMoves, key=lambda x: x[1], reverse=True)]
             bestEvaluation = float('inf')
             # go through all possible moves of each black piece
             for move in blackMoves:
                 self.pythonBoard.push(move)
                 fenBoard = self.pythonBoard.board_fen()
                 self.board = fenConverter(fenBoard)
-                if (self.pythonBoard.is_checkmate() and depth == DEPTH):
+                if (self.pythonBoard.is_checkmate() and depth == baseDepth):
                     self.move = move
                     self.pythonBoard.pop()
                     return float('-inf')
+
+                if depth == DEPTH:
+                    self.prevMove = move.uci()
 
                 if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
                     evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
                     if (evaluation < bestEvaluation):
                         bestEvaluation = evaluation
-                        if (depth == DEPTH):
+                        if (depth == baseDepth):
                             self.move = move
                             self.materialValue = bestEvaluation
-
+                    if self.prevMove == "f6d7":
+                        print("black, seem: ", depth, move.uci(), evaluation)
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
                     beta = min(beta, evaluation)
@@ -383,14 +406,21 @@ class Engine():
                         break
                     continue
 
-                evaluation = self.search(depth - 1, not whiteTurn, alpha, beta)
-                if (self.transpositions[(fenBoard, whiteTurn)] == None):
-                    self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+                evaluation = self.search(depth - 1, not whiteTurn, alpha, beta, baseDepth)
+                self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+
+                if self.prevMove == "f6d7":
+                    print("black: ", depth, move.uci(), evaluation)
+
+                # adding moves for our moves this depth
+                if depth == baseDepth:
+                    self.prevDepthScores[move.uci()] = evaluation
+
                 # if we get better score
                 if (evaluation < bestEvaluation):
                     bestEvaluation = evaluation
-                    # Choose the move. Only legal moves for the next turn will be at depth DEPTH
-                    if (depth == DEPTH):
+                    # Choose the move. Only legal moves for the next turn will be at depth baseDepth
+                    if (depth == baseDepth):
                         self.move = move
                         self.materialValue = bestEvaluation
                 self.pythonBoard.pop()
