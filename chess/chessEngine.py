@@ -62,22 +62,22 @@ class MainWindow():
     def __init__(self, board: chess.Board):
         self.board = board
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        self.whitePieces = 16
-        self.blackPieces = 16
+        self.whitePieces = 2
+        self.blackPieces = 2
 
         self.whitePieceCount = {
-            'Q': 1,
-            'N': 2,
-            'B': 2,
-            'R': 2,
-            'P': 8
+            'Q': 0,
+            'N': 0,
+            'B': 0,
+            'R': 0,
+            'P': 1
         }
         self.blackPieceCount = {
             'q': 1,
-            'n': 2,
-            'b': 2,
-            'r': 2,
-            'p': 8
+            'n': 0,
+            'b': 0,
+            'r': 0,
+            'p': 0
         }
 
         self.sanStack = []
@@ -193,7 +193,6 @@ class MainWindow():
                         with open('games.txt', 'r') as f:
                             i = 0
                             for line in f:
-                                print(i)
                                 i += 1
                                 # if we found a record from the file games.txt
                                 if (currPos == line[:posLen]):
@@ -229,14 +228,13 @@ class MainWindow():
                             if self.engine.move != None:
                                 bestMove = self.engine.move
                             print(board.turn, bestMove)
-                        # print(self.engine.search(DEPTH, False, float("-inf"), float("inf"), DEPTH))
-                        # bestMove = self.engine.move
-                        # self.transpositions = self.engine.transpositions
+
                         print(time.time() - start_time)
                         self.prevDepthScores = defaultdict(lambda: None)
                         # game has ended (engine can make no more moves)
                         if bestMove == None:
-                            break
+                            # print(board.outcome().winner)
+                            sys.exit()
                         # if there's a piece
                         if bestMove.uci()[-1].isnumeric() == False:
                             moveName = bestMove.uci()[2:-1]
@@ -247,7 +245,6 @@ class MainWindow():
                             self.whitePieces -= 1
                             # check for what kind of white piece was captured
                             self.whitePieceCount[name] -= 1
-                        # self.transpositions = self.engine.transpositions
                         self.sanStack.append(self.board.san(bestMove))
                         self.board.push(bestMove)
                         print("done: ", self.engine.materialValue)
@@ -260,6 +257,6 @@ class MainWindow():
 
 
 newBoard = ch.Board()
-# newBoard.set_board_fen("1r4k1/4R3/4p1pb/4p3/1Pn5/5NK1/7P/8")
+newBoard.set_board_fen("8/3K4/4P3/8/8/8/6k1/7q")
 window = MainWindow(newBoard)
 window.startGame()

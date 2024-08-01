@@ -57,7 +57,6 @@ class Engine():
         self.prevDepthScores = prevDepthScores
         self.whitePieceCount = whitePieceCount
         self.blackPieceCount = blackPieceCount
-        self.prevMove = None
 
     def attackedByPawn(self, start: str, color: str) -> bool:
         """
@@ -161,8 +160,7 @@ class Engine():
         rankDist = abs(blackKingRank - whiteKingRank)
         kingDist = fileDist + rankDist
         eval += 14 - kingDist
-        # if (isWhite == False):
-        #     eval = -eval
+
         return int(eval * endgameWeight)
 
     def evaluate(self, isWhite: bool) -> float:
@@ -174,10 +172,8 @@ class Engine():
         if (self.pythonBoard.is_stalemate()):
             return 0
         if (self.pythonBoard.outcome() != None):
-            if (self.pythonBoard.outcome().winner == True):
-                    return float('inf')
-            elif (self.pythonBoard.outcome().winner == False):
-                return float('-inf')
+            if (self.pythonBoard.outcome().winner == True and isWhite == False):
+                    return float('-inf')
         for square in squares:
             # if there's a piece on the square
             if (self.board[square] != '0'):
@@ -202,7 +198,7 @@ class Engine():
                         vMap = queenMap(square)
                         materialValue += vMap.mapValue()
                     elif name == 'k':
-                        if (self.whitePieceCount['Q'] == 0 or
+                        if ((self.whitePieceCount['Q'] == 0 and self.whitePieceCount['R'] == 1 and self.whitePieceCount['B'] + self.whitePieceCount['N'] <= 2) or
                             (self.whitePieceCount['B'] + self.whitePieceCount['N'] + self.whitePieceCount['R'] <= 2 and self.whitePieceCount['R'] <= 1)):
                             vMap = lateKingMap(square)
                         else:
@@ -228,7 +224,7 @@ class Engine():
                         vMap = queenMap(square)
                         materialValue += -vMap.mapValue()
                     elif name == 'K':
-                        if (self.blackPieceCount['q'] == 0 or
+                        if ((self.blackPieceCount['q'] == 0 and self.blackPieceCount['r'] == 1 and self.blackPieceCount['b'] + self.blackPieceCount['n'] <= 2) or
                             (self.blackPieceCount['b'] + self.blackPieceCount['n'] + self.blackPieceCount['r'] <= 2 and self.blackPieceCount['r'] <= 1)):
                             vMap = lateKingMap(square)
                         else:
@@ -237,17 +233,12 @@ class Engine():
                     elif name == 'R':
                         vMap = rookMap(square)
                         materialValue += -vMap.mapValue()
-                if self.prevMove == "f6e4":
-                    print(name, piece.value, '  ', vMap.mapValue())
-                    print(materialValue)
                 materialValue += piece.value * 10
-        if self.prevMove == "f6e4":
-            print(self.pythonBoard, '\n', materialValue)
-        # if (isWhite):
-        #     endGameBonus = self.endGameEval(16 - self.whitePieces, isWhite)
-        # else:
-        #     endGameBonus = self.endGameEval(16 - self.blackPieces, isWhite)
-        return materialValue  # + endGameBonus
+
+        if isWhite:
+            return materialValue
+        else:
+            return -materialValue
 
     def isCapture(self, square: str) -> bool:
         if (self.board[square] != '0'):
@@ -278,185 +269,117 @@ class Engine():
         the score given to the position is accurate even after the depth has ran out.
         It inherits alpha and beta from the search function as well as whiteTurn.
         """
+        moves = []
         evaluation = self.evaluate(whiteTurn)
         squares = list(self.board.keys())
         possibleMoves = {}
-        end = False
-        if (whiteTurn):
-            bestEvaluation = float('-inf')
-            alpha = max(alpha, evaluation)
-            # no longer need to check for rest of captures
-            if (alpha >= beta):
-                return alpha
-            for square in squares:
-                # if there's a white piece
-                if (self.board[square] != '0' and self.board[square].isupper()):
-                    possibleMoves[square] = [elem[0] for elem in self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)]
-            whiteSquares = list(possibleMoves.keys())
-            for whiteSquare in whiteSquares:
-                for move in possibleMoves[whiteSquare]:
-                    self.pythonBoard.push(ch.Move.from_uci(whiteSquare + move))
-                    self.board = fenConverter(self.pythonBoard.board_fen())
-                    evaluation = self.searchCaptures(not whiteTurn, alpha, beta)
-                    if (evaluation > bestEvaluation):
-                        bestEvaluation = evaluation
-                    self.pythonBoard.pop()
-                    self.board = fenConverter(self.pythonBoard.board_fen())
-                    alpha = max(alpha, evaluation)
-                    # pruning
-                    if (beta <= alpha):
-                        end = True
-                        break
-                if (end):
-                    break
-        else:
-            bestEvaluation = float('inf')
-            beta = min(beta, evaluation)
-            if (alpha >= beta):
+        # don't need to check moves
+        if evaluation >= beta:
                 return beta
+        alpha = max(alpha, evaluation)
+        if whiteTurn:
             for square in squares:
-                if (self.board[square] != '0' and self.board[square].isupper()):
-                    possibleMoves[square] = [elem[0] for elem in self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)]
-            blackSquares = list(possibleMoves.keys())
-            for blackSquare in blackSquares:
-                for move in possibleMoves[blackSquare]:
-                    self.pythonBoard.push(ch.Move.from_uci(blackSquare + move))
-                    self.board = fenConverter(self.pythonBoard.board_fen())
-                    evaluation = self.searchCaptures(not whiteTurn, alpha, beta)
-                    if (evaluation < bestEvaluation):
-                        bestEvaluation = evaluation
-                    self.pythonBoard.pop()
-                    self.board = fenConverter(self.pythonBoard.board_fen())
-                    beta = min(beta, evaluation)
-                    if (beta <= alpha):
-                        end = True
-                        break
-                if (end):
-                    break
-        return evaluation
+                if (self.board[square] != '0' and findColor(self.board[square]) == "white"):
+                    squareMoves = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
+                    for move, score in squareMoves:
+                        moves.append([ch.Move.from_uci(square + move), score])
+            moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
+        else:
+            for square in squares:
+                if (self.board[square] != '0' and findColor(self.board[square]) == "black"):
+                    squareMoves = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
+                    for move, score in squareMoves:
+                        moves.append([ch.Move.from_uci(square + move), score])
+            moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
 
+        for move in moves:
+            self.pythonBoard.push(move)
+            self.board = fenConverter(self.pythonBoard.board_fen())
+            evaluation = -self.searchCaptures(not whiteTurn, -beta, -alpha)
+            self.pythonBoard.pop()
+            self.board = fenConverter(self.pythonBoard.board_fen())
+            if evaluation >= beta:
+                return beta
+            alpha = max(alpha, evaluation)
+        return alpha
 
     def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int, baseDepth: int) -> float:
         """
         search function will give scores to position after searching with a
         depth of depth.
         """
-        test = defaultdict(lambda: [])
         squares = list(self.board.keys())
         # end of depth
         if (depth == 0):
             return self.searchCaptures(whiteTurn, alpha, beta)
-        # trying to maximize the score
+
+        moves = []
+        # finding legal moves this turn
         if (whiteTurn):
-            whiteMoves = []
             for square in squares:
+                # check for a piece
                 if (self.board[square] != '0' and self.board[square].isupper()):
                     squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
                     for move, score in squareMoves:
-                        whiteMoves.append([ch.Move.from_uci(square + move), score])
-            whiteMoves = [move[0] for move in sorted(whiteMoves, key=lambda x: x[1], reverse=True)]
-            bestEvaluation = float('-inf')
-            # go through all possible moves of each white piece
-            for move in whiteMoves:
-                self.pythonBoard.push(move)
-                fenBoard = self.pythonBoard.board_fen()
-                self.board = fenConverter(fenBoard)
-                # if we've already seen this position and can't evaluate it at a greater depth
-                if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
-                    evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
-                    if self.prevMove == "f6d7":
-                        print("White seen, :", evaluation)
-                    if (evaluation > bestEvaluation):
-                        bestEvaluation = evaluation
-                    self.pythonBoard.pop()
-                    self.board = fenConverter(self.pythonBoard.board_fen())
-                    alpha = max(alpha, evaluation)
-                    if (beta <= alpha):
-                        break
-                    continue
-                        
-                evaluation = self.search(depth - 1, not whiteTurn, alpha, beta, baseDepth) # alpha best for white, beta best for black
+                        moves.append([ch.Move.from_uci(square + move), score])
+            moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
 
-                if self.prevMove == "f6d7":
-                    print("White :", move.uci(), evaluation)
-
-                # add position to our transposition table
-                self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
-
-                if (evaluation > bestEvaluation):
-                    bestEvaluation = evaluation
-                self.pythonBoard.pop()
-                self.board = fenConverter(self.pythonBoard.board_fen())
-                alpha = max(alpha, evaluation)
-                # Pruning
-                if (beta <= alpha):
-                    break
-            return bestEvaluation
-        # trying to minimize the score
         else:
-            blackMoves = []
+            # organize the moves based on the past search at lower depth
             if baseDepth != 1 and depth == baseDepth:
                 squareMoves = list(zip(self.prevDepthScores.keys(), self.prevDepthScores.values()))
-                blackMoves = [ch.Move.from_uci(move[0]) for move in sorted(squareMoves, key=lambda x: x[1])]
+                moves = [ch.Move.from_uci(move[0]) for move in sorted(squareMoves, key=lambda x: x[1])]
             else:
                 for square in squares:
                     if (self.board[square] != '0' and self.board[square].islower()):
                         squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
                         for move, score in squareMoves:
-                            blackMoves.append([ch.Move.from_uci(square + move), score])
-                blackMoves = [move[0] for move in sorted(blackMoves, key=lambda x: x[1], reverse=True)]
-            bestEvaluation = float('inf')
-            # go through all possible moves of each black piece
-            for move in blackMoves:
-                self.pythonBoard.push(move)
-                fenBoard = self.pythonBoard.board_fen()
-                self.board = fenConverter(fenBoard)
-                if (self.pythonBoard.is_checkmate() and depth == baseDepth):
-                    self.move = move
-                    self.pythonBoard.pop()
-                    return float('-inf')
+                            moves.append([ch.Move.from_uci(square + move), score])
+                moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
+        print([move.uci() for move in moves])
+        for move in moves:
+            self.pythonBoard.push(move)
+            fenBoard = self.pythonBoard.board_fen()
+            self.board = fenConverter(fenBoard)
 
-                if depth == DEPTH:
-                    self.prevMove = move.uci()
-
-                if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] > depth):
-                    evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
-                    if (evaluation < bestEvaluation):
-                        bestEvaluation = evaluation
-                        if (depth == baseDepth):
-                            self.move = move
-                            self.materialValue = bestEvaluation
-                    if self.prevMove == "f6d7":
-                        print("black, seem: ", depth, move.uci(), evaluation)
-                    self.pythonBoard.pop()
-                    self.board = fenConverter(self.pythonBoard.board_fen())
-                    beta = min(beta, evaluation)
-                    if depth == baseDepth:
-                        self.prevDepthScores[move.uci()] = evaluation
-                    if (beta <= alpha):
-                        break
-                    continue
-
-                evaluation = self.search(depth - 1, not whiteTurn, alpha, beta, baseDepth)
-                self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
-
-                if self.prevMove == "f6d7":
-                    print("black: ", depth, move.uci(), evaluation)
-
-                # adding moves for our moves this depth
-                if depth == baseDepth:
-                    self.prevDepthScores[move.uci()] = evaluation
-
-                # if we get better score
-                if (evaluation < bestEvaluation):
-                    bestEvaluation = evaluation
-                    # Choose the move. Only legal moves for the next turn will be at depth baseDepth
-                    if (depth == baseDepth):
-                        self.move = move
-                        self.materialValue = bestEvaluation
+            if (self.pythonBoard.is_checkmate() and depth == baseDepth):
+                self.move = move
+                self.pythonBoard.pop()
+                return float('-inf')
+            # if we find a position we've already visited at higher or equal depth, no need to re-evaluate
+            if (self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] >= depth):
+                evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
                 self.pythonBoard.pop()
                 self.board = fenConverter(self.pythonBoard.board_fen())
-                beta = min(beta, evaluation)
-                if (beta < alpha):
-                    break
-            return bestEvaluation
+                if depth == baseDepth:
+                    self.prevDepthScores[move.uci()] = evaluation
+                if evaluation >= beta:
+                    return beta
+                if evaluation > alpha:
+                    if depth == baseDepth:
+                        self.move = move
+                        self.materialValue = alpha
+                    alpha = evaluation
+                continue
+
+            evaluation = -self.search(depth - 1, not whiteTurn, -beta, -alpha, baseDepth)
+            self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+
+            # adding moves for our moves this depth
+            if depth == baseDepth:
+                self.prevDepthScores[move.uci()] = evaluation
+
+            self.pythonBoard.pop()
+            self.board = fenConverter(self.pythonBoard.board_fen())
+
+            # pruning
+            if evaluation >= beta:
+                return beta
+
+            if evaluation > alpha:
+                # Choose the move. Only legal moves for the next turn will be at depth baseDepth
+                if (depth == baseDepth):
+                    self.move = move
+                    self.materialValue = alpha
+                alpha = evaluation
+        return alpha

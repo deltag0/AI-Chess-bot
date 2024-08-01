@@ -462,17 +462,22 @@ class earlyKingMap():
             'g7': -2.0,
             'h7': -2.0,
             'a8': -2.0,
-            'b8': -3.0,
-            'c8': -1.0,
+            'b8': -4.0,
+            'c8': -3.0,
             'd8': 0,
             'e8': 0,
             'f8': -1.0,
-            'g8': -3.0,
+            'g8': -4.0,
             'h8': -2.0,
         }
         return map[self.square]
 
 class lateKingMap():
+    """
+    general value given to black's king based on where he is on the board.
+    """
+    def __init__(self, square: str) -> None:
+        self.square = square
     def mapValue(self) -> int:
         """
         returns value for where king is late game
@@ -543,3 +548,4 @@ class lateKingMap():
             'g8': 3.0,
             'h8': 5.0,
         }
+        return map[self.square]
