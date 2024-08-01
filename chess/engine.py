@@ -190,30 +190,59 @@ class Engine():
                 piece = Piece(name, color, 0, moves)
                 if color == 'black':
                     if name == 'p':
-                        pMap = pawnMap(square)
-                        materialValue += pMap.mapValue()
+                        vMap = pawnMap(square)
+                        materialValue += vMap.mapValue()
                     elif name == 'n':
-                        nMap = knightMap(square)
-                        materialValue += nMap.mapValue()
+                        vMap = knightMap(square)
+                        materialValue += vMap.mapValue()
                     elif name == 'b':
-                        bMap = bishopMap(square)
-                        materialValue += bMap.mapValue()
+                        vMap = bishopMap(square)
+                        materialValue += vMap.mapValue()
                     elif name == 'q':
-                        qMap = queenMap(square)
-                        materialValue += qMap.mapValue()
+                        vMap = queenMap(square)
+                        materialValue += vMap.mapValue()
                     elif name == 'k':
                         if (self.whitePieceCount['Q'] == 0 or
                             (self.whitePieceCount['B'] + self.whitePieceCount['N'] + self.whitePieceCount['R'] <= 2 and self.whitePieceCount['R'] <= 1)):
-                            kMap = lateKingMap(square)
+                            vMap = lateKingMap(square)
                         else:
-                            kMap = earlyKingMap(square)
-                        materialValue += kMap.mapValue()
+                            vMap = earlyKingMap(square)
+                        materialValue += vMap.mapValue()
                     elif name == 'r':
-                        rMap = rookMap(square)
-                        materialValue += rMap.mapValue()
+                        vMap = rookMap(square)
+                        materialValue += vMap.mapValue()
+                if color == 'white':
+                    row = int(square[1])
+                    newRow = str(9 - row)
+                    square = square[0] + newRow
+                    if name == 'P':
+                        vMap = pawnMap(square)
+                        materialValue += -vMap.mapValue()
+                    elif name == 'N':
+                        vMap = knightMap(square)
+                        materialValue += -vMap.mapValue()
+                    elif name == 'B':
+                        vMap = bishopMap(square)
+                        materialValue += -vMap.mapValue()
+                    elif name == 'Q':
+                        vMap = queenMap(square)
+                        materialValue += -vMap.mapValue()
+                    elif name == 'K':
+                        if (self.blackPieceCount['q'] == 0 or
+                            (self.blackPieceCount['b'] + self.blackPieceCount['n'] + self.blackPieceCount['r'] <= 2 and self.blackPieceCount['r'] <= 1)):
+                            vMap = lateKingMap(square)
+                        else:
+                            vMap = earlyKingMap(square)
+                        materialValue += -vMap.mapValue()
+                    elif name == 'R':
+                        vMap = rookMap(square)
+                        materialValue += -vMap.mapValue()
+                if self.prevMove == "f6e4":
+                    print(name, piece.value, '  ', vMap.mapValue())
+                    print(materialValue)
                 materialValue += piece.value * 10
-        if self.prevMove == "f6d7":
-            print(materialValue)
+        if self.prevMove == "f6e4":
+            print(self.pythonBoard, '\n', materialValue)
         # if (isWhite):
         #     endGameBonus = self.endGameEval(16 - self.whitePieces, isWhite)
         # else:
@@ -402,6 +431,8 @@ class Engine():
                     self.pythonBoard.pop()
                     self.board = fenConverter(self.pythonBoard.board_fen())
                     beta = min(beta, evaluation)
+                    if depth == baseDepth:
+                        self.prevDepthScores[move.uci()] = evaluation
                     if (beta <= alpha):
                         break
                     continue
