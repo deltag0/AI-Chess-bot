@@ -49,14 +49,14 @@ class Engine():
                  whitePieceCount: dict[str: int], blackPieceCount: dict[str: int]) -> None:
         self.board = board
         self.pythonBoard = pythonBoard
-        self.materialValue = 0
-        self.move = None
+        self.materialValue = None
         self.transpositions = transpositions
         self.whitePieces = whitePieces
         self.blackPieces = blackPieces
         self.prevDepthScores = prevDepthScores
         self.whitePieceCount = whitePieceCount
         self.blackPieceCount = blackPieceCount
+        self.moves = {}
 
     def attackedByPawn(self, start: str, color: str) -> bool:
         """
@@ -94,7 +94,7 @@ class Engine():
                         return True
                 return False
 
-    def orderMoves(self, moves: set[str], start: str) -> list[str]:
+    def orderMoves(self, moves: list[ch.Move]) -> list[list[str, float]]:
         """
         orderMoves sorts the moves in an order with estimates to how good the
         move is. There are 4 criterias: 
@@ -103,12 +103,18 @@ class Engine():
         Move that gets a piece attacked by a pawn
         Checkmate
         """
+        
         valList = []
-        moveName = self.board[start]
-        moveColor = findColor(moveName)
-        movePiece = Piece(moveName, moveColor, 0, set())
         for move in moves:
-            move = move[:2]
+            move = move.uci()
+            start = move[:2]
+            moveName = self.board[start]
+            moveColor = findColor(moveName)
+            movePiece = Piece(moveName, moveColor, 0, set())
+            if move[-1].isnumeric() == False:
+                move = move[2:-1]
+            else:
+                move = move[2:]
             targetName = self.board[move]
             # if there's a piece on the square, check the captured piece
             if targetName != '0':
@@ -175,7 +181,7 @@ class Engine():
             return 0
         if self.pythonBoard.outcome() != None:
             if self.pythonBoard.is_checkmate():
-                return float('-inf')
+                return -9999999
 
         for square in squares:
             # if there's a piece on the square
@@ -237,25 +243,25 @@ class Engine():
         else:
             return False
 
-    def findCaptureMoves(self, allMoves: list[ch.Move], currPos: str) -> set[str]:
+    def findCaptureMoves(self, allMoves: list[ch.Move]) -> list[ch.Move]:
         """
         Finds all capture moves of the piece at currPos which is a string representing 
         a square on the board, such as a8 using allMoves which is a list containing 
         every legal move of every piece
         """
-        legalMoves = set()
+        legalMoves = []
         for location in allMoves:
-            pos = str(location)[2:4]
-            try:
-                # add move if it's legal
-                if ch.Move.from_uci(currPos + pos) in allMoves and self.board[pos] != '0':
-                    legalMoves.add(pos)
-            except ch.InvalidMoveError:
-                pass
+            if location.uci()[-1].isnumeric() == False:
+                pos = location.uci()[2:-1]
+            else:
+                pos = location.uci()[2:]
+
+            if self.board[pos] != '0':
+                legalMoves.append(location)
         return legalMoves
 
     def undoPieces(self, piece: str, ppiece: str, move: str, isWhite: bool) -> None:
-        if ppiece != '0':
+        if ppiece != '0' and ppiece != 'k' and ppiece != 'K':
             if isWhite:
                 self.blackPieceCount[ppiece] += 1
             else:
@@ -266,11 +272,11 @@ class Engine():
                 self.whitePieceCount['Q'] -= 1
         else:
             if piece == 'p' and int(move[-1]) == 1:
-                self.whitePieceCount[piece] -= 1
-                self.whitePieceCount['q'] += 1
+                self.blackPieceCount[piece] -= 1
+                self.blackPieceCount['q'] += 1
 
     def doPieces(self, piece: str, ppiece: str, move: str, isWhite: bool) -> None:
-        if ppiece != '0':
+        if ppiece != '0' and ppiece != 'k' and ppiece != 'K':
             if isWhite:
                 self.blackPieceCount[ppiece] -= 1
             else:
@@ -281,36 +287,22 @@ class Engine():
                 self.whitePieceCount['Q'] += 1
         else:
             if piece == 'p' and int(move[-1]) == 1:
-                self.whitePieceCount[piece] -= 1
-                self.whitePieceCount['q'] += 1
+                self.blackPieceCount[piece] -= 1
+                self.blackPieceCount['q'] += 1
     def searchCaptures(self, whiteTurn: bool, alpha: int, beta: int) -> float:
         """
         Search captures looks at sequences of immediate captures to ensure that
         the score given to the position is accurate even after the depth has ran out.
         It inherits alpha and beta from the search function as well as whiteTurn.
         """
-        moves = []
         evaluation = self.evaluate(whiteTurn)
-        squares = list(self.board.keys())
         # don't need to check moves
         if evaluation >= beta:
             return beta
         alpha = max(alpha, evaluation)
-        if whiteTurn:
-            for square in squares:
-                if self.board[square] != '0' and findColor(self.board[square]) == "white":
-                    squareMoves = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
-                    for move, score in squareMoves:
-                        moves.append([ch.Move.from_uci(square + move), score])
-            moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
-        else:
-            for square in squares:
-                if self.board[square] != '0' and findColor(self.board[square]) == "black":
-                    squareMoves = self.orderMoves(self.findCaptureMoves(self.pythonBoard.legal_moves, square), square)
-                    for move, score in squareMoves:
-                        moves.append([ch.Move.from_uci(square + move), score])
-            moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
-
+        moves = self.orderMoves(self.findCaptureMoves(list(self.pythonBoard.legal_moves)))
+        moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
+        # print("MOVES", moves)
         for move in moves:
             self.pythonBoard.push(move)
             if move.uci()[-1].isnumeric() == False:
@@ -330,185 +322,98 @@ class Engine():
             alpha = max(alpha, evaluation)
         return alpha
 
-    # def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int, baseDepth: int) -> float:
-    #     """
-    #     search function will give scores to position after searching with a
-    #     depth of depth.
-    #     """
-    #     squares = list(self.board.keys())
-    #     # end of depth
-    #     if depth == 0):
-    #         return self.searchCaptures(whiteTurn, alpha, beta)
-
-    #     moves = []
-    #     # finding legal moves this turn
-    #     if whiteTurn):
-    #         for square in squares:
-    #             # check for a piece
-    #             if self.board[square] != '0' and self.board[square].isupper()):
-    #                 squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
-    #                 for move, score in squareMoves:
-    #                     moves.append([ch.Move.from_uci(square + move), score])
-    #         moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
-
-    #     else:
-    #         # organize the moves based on the past search at lower depth
-    #         if False and baseDepth != 1 and depth == baseDepth:
-    #             squareMoves = list(zip(self.prevDepthScores.keys(), self.prevDepthScores.values()))
-    #             moves = [ch.Move.from_uci(move[0]) for move in sorted(squareMoves, key=lambda x: x[1])]
-    #         else:
-    #             for square in squares:
-    #                 if self.board[square] != '0' and self.board[square].islower()):
-    #                     squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
-    #                     for move, score in squareMoves:
-    #                         moves.append([ch.Move.from_uci(square + move), score])
-    #             moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
-    #     for move in moves:
-    #         self.pythonBoard.push(move)
-    #         if move.uci()[-1].isnumeric() == False:
-    #             moveName = move.uci()[2:-1]
-    #         else:
-    #             moveName = move.uci()[2:]
-    #         piece = self.board[move.uci()[:2]]
-    #         ppiece = self.board[moveName]
-    #         self.doPieces(piece, ppiece, moveName, whiteTurn)
-
-    #         fenBoard = self.pythonBoard.board_fen()
-    #         self.board = fenConverter(fenBoard)
-
-    #         # if we find a position we've already visited at higher or equal depth, no need to re-evaluate
-    #         # if self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] >= depth):
-    #         #     evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
-    #         #     self.pythonBoard.pop()
-    #         #     self.undoPieces(piece, ppiece, moveName, whiteTurn)
-    #         #     self.board = fenConverter(self.pythonBoard.board_fen())
-    #         #     if depth == baseDepth:
-    #         #         self.prevDepthScores[move.uci()] = evaluation
-    #         #     if evaluation >= beta:
-    #         #         return beta
-    #         #     if evaluation > alpha:
-    #         #         if depth == baseDepth:
-    #         #             self.move = move
-    #         #             self.materialValue = alpha
-    #         #         alpha = evaluation
-    #         #     continue
-
-    #         evaluation = -self.search(depth - 1, not whiteTurn, -beta, -alpha, baseDepth)
-    #         if depth == DEPTH:
-    #             print(evaluation, '\n', self.pythonBoard)
-    #         self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
-
-    #         # adding moves for our moves this depth
-    #         if depth == baseDepth:
-    #             self.prevDepthScores[move.uci()] = evaluation
-
-    #         self.pythonBoard.pop()
-    #         self.undoPieces(piece, ppiece, moveName, whiteTurn)
-    #         self.board = fenConverter(self.pythonBoard.board_fen())
-
-    #         # pruning
-    #         if evaluation >= beta:
-    #             return beta
-
-    #         if evaluation >= alpha:
-    #             # Choose the move. Only legal moves for the next turn will be at depth baseDepth
-    #             if depth == baseDepth):
-    #                 self.move = move
-    #                 self.materialValue = alpha
-    #             alpha = evaluation
-    #     return alpha
-
-    # def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int, baseDepth: int) -> float:
-    #     if depth == 0:
-    #         return self.searchCaptures(whiteTurn, alpha, beta)
-    #     moves = []
-    #     squares = list(self.board.keys())
-    #     # finding legal moves this turn
-    #     if whiteTurn):
-    #         for square in squares:
-    #             # check for a piece
-    #             if self.board[square] != '0' and self.board[square].isupper()):
-    #                 squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
-    #                 for move, score in squareMoves:
-    #                     moves.append([ch.Move.from_uci(square + move), score])
-    #         moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
-
-    #     else:
-    #         # organize the moves based on the past search at lower depth
-    #         if False and baseDepth != 1 and depth == baseDepth:
-    #             squareMoves = list(zip(self.prevDepthScores.keys(), self.prevDepthScores.values()))
-    #             moves = [ch.Move.from_uci(move[0]) for move in sorted(squareMoves, key=lambda x: x[1])]
-    #         else:
-    #             for square in squares:
-    #                 if self.board[square] != '0' and self.board[square].islower()):
-    #                     squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
-    #                     for move, score in squareMoves:
-    #                         moves.append([ch.Move.from_uci(square + move), score])
-    #             moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
-    #     for move in moves:
-    #         self.pythonBoard.push(move)
-    #         fenboard = self.pythonBoard.board_fen()
-    #         if move.uci()[-1].isnumeric() == False:
-    #             moveName = move.uci()[2:-1]
-    #         else:
-    #             moveName = move.uci()[2:]
-    #         piece = self.board[move.uci()[:2]]
-    #         ppiece = self.board[moveName]
-
-    #         self.doPieces(piece, ppiece, moveName, whiteTurn)
-    #         self.board = fenConverter(fenboard)
-    #         evaluation = -self.search(depth - 1, not whiteTurn, -beta, -alpha, baseDepth)
-    #         if depth == DEPTH:
-    #             print(evaluation, '\n', self.pythonBoard)
-    #         if depth == baseDepth:
-    #             self.prevDepthScores[move.uci()] = evaluation
-    #         self.pythonBoard.pop()
-    #         self.undoPieces(piece, ppiece, moveName, whiteTurn)
-    #         self.board = fenConverter(self.pythonBoard.board_fen())
-    #         if evaluation >= beta:
-    #             return beta
-    #         if evaluation > alpha:
-    #             if depth == DEPTH:
-    #                 self.move = move
-    #             alpha = evaluation
-    #     return alpha
-
     def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int, baseDepth: int) -> float:
-        if depth == 0:
-            return self.evaluate(whiteTurn)
-        moves = []
+        """
+        search function will give scores to position after searching with a
+        depth of depth.
+        """
         squares = list(self.board.keys())
+        # end of depth
+        if depth == 0 and baseDepth == DEPTH:
+            return self.searchCaptures(whiteTurn, alpha, beta)
+        elif depth == 0:
+            return self.evaluate(whiteTurn)
+
+        moves = []
         # finding legal moves this turn
         if whiteTurn:
-            for square in squares:
-                # check for a piece
-                if self.board[square] != '0' and self.board[square].isupper():
-                    squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
-                    for move, score in squareMoves:
-                        moves.append([ch.Move.from_uci(square + move), score])
+            moves = self.orderMoves(list(self.pythonBoard.legal_moves))
             moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
 
         else:
-            for square in squares:
-                if self.board[square] != '0' and self.board[square].islower():
-                    squareMoves = self.orderMoves(findLegalMoves(self.pythonBoard.legal_moves, square), square)
-                    for move, score in squareMoves:
-                        moves.append([ch.Move.from_uci(square + move), score])
-            moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
+            # organize the moves based on the past search at lower depth
+            if baseDepth != 1 and depth == baseDepth:
+                squareMoves = list(zip(self.prevDepthScores.keys(), self.prevDepthScores.values()))
+                moves = [ch.Move.from_uci(move[0]) for move in sorted(squareMoves, key=lambda x: x[1])]
+            else:
+                moves = self.orderMoves(list(self.pythonBoard.legal_moves))
+                moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
         for move in moves:
             self.pythonBoard.push(move)
-            fenboard = self.pythonBoard.board_fen()
-            self.board = fenConverter(fenboard)
+            if move.uci()[-1].isnumeric() == False:
+                moveName = move.uci()[2:-1]
+            else:
+                moveName = move.uci()[2:]
+            piece = self.board[move.uci()[:2]]
+            ppiece = self.board[moveName]
+            self.doPieces(piece, ppiece, moveName, whiteTurn)
+
+            fenBoard = self.pythonBoard.board_fen()
+            self.board = fenConverter(fenBoard)
+
+            # if we find a position we've already visited at higher or equal depth, no need to re-evaluate
+            if self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] >= depth:
+                evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
+                self.pythonBoard.pop()
+                self.undoPieces(piece, ppiece, moveName, whiteTurn)
+                self.board = fenConverter(self.pythonBoard.board_fen())
+
+                if evaluation == alpha and depth == baseDepth:
+                    self.prevDepthScores[move.uci()] = 0
+                    continue
+
+                # adding moves for our moves this depth
+                elif depth == baseDepth:
+                    self.prevDepthScores[move.uci()] = evaluation
+
+                # Choose the move. Only legal moves for the next turn will be at depth baseDepth
+                if depth == baseDepth:
+                    self.moves[evaluation] = move
+
+                # pruning
+                if evaluation >= beta:
+                    return beta
+                alpha = max(alpha, evaluation)
+                if depth == baseDepth:
+                    self.materialValue = alpha
+                continue
+
             evaluation = -self.search(depth - 1, not whiteTurn, -beta, -alpha, baseDepth)
-            if depth == DEPTH:
-                print(evaluation, '\n', self.pythonBoard)
+            self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
+
             self.pythonBoard.pop()
+            self.undoPieces(piece, ppiece, moveName, whiteTurn)
             self.board = fenConverter(self.pythonBoard.board_fen())
+
+            if evaluation == alpha and depth == baseDepth:
+                self.prevDepthScores[move.uci()] = 0
+                continue
+
+            # adding moves for our moves this depth
+            elif depth == baseDepth:
+                self.prevDepthScores[move.uci()] = evaluation
+
+            # Choose the move. Only legal moves for the next turn will be at depth baseDepth
+            if depth == baseDepth:
+                self.moves[evaluation] = move
+
+            # pruning
             if evaluation >= beta:
                 return beta
-            if evaluation > alpha:
-                if depth == DEPTH:
-                    self.move = move
-                    self.materialValue = evaluation
-                alpha = evaluation
+            alpha = max(alpha, evaluation)
+            if depth == baseDepth:
+                self.materialValue = alpha
+        if depth == baseDepth:
+            print(self.moves, alpha)
+            self.materialValue = alpha
         return alpha

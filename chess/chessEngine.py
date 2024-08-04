@@ -62,22 +62,22 @@ class MainWindow():
     def __init__(self, board: chess.Board):
         self.board = board
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        self.whitePieces = 2
-        self.blackPieces = 1
+        self.whitePieces = 16
+        self.blackPieces = 16
 
         self.whitePieceCount = {
-            'Q': 0,
-            'N': 0,
-            'B': 0,
-            'R': 0,
-            'P': 1
+            'Q': 1,
+            'N': 2,
+            'B': 2,
+            'R': 2,
+            'P': 8
         }
         self.blackPieceCount = {
             'q': 1,
-            'n': 0,
-            'b': 0,
-            'r': 0,
-            'p': 0
+            'n': 2,
+            'b': 2,
+            'r': 2,
+            'p': 8
         }
 
         self.sanStack = []
@@ -219,19 +219,18 @@ class MainWindow():
                     else:
                         start_time = time.time()
                         bestMove = None
-                        # for i in range(1, DEPTH + 1):
-                        #     self.engine = Engine(self.currBoard, self.board, self.whitePieces, self.blackPieces, self.transpositions, self.prevDepthScores,
-                        #                          self.whitePieceCount, self.blackPieceCount)
-                        #     print(self.engine.search(i, False, float("-inf"), float("inf"), i))
-                        #     self.transpositions = self.engine.transpositions
-                        #     self.prevDepthScores = self.engine.prevDepthScores
-                        #     print(self.engine.move)
-                        #     if self.engine.move != None:
-                        #         bestMove = self.engine.move
-                            # print(board.turn, bestMove)
-                        print(self.engine.search(DEPTH, False, float("-inf"), float("inf"), DEPTH))
-                        self.transpositions = self.engine.transpositions
-                        bestMove = self.engine.move
+                        for i in range(1, DEPTH + 1):
+                            self.engine = Engine(self.currBoard, self.board, self.whitePieces, self.blackPieces, self.transpositions, self.prevDepthScores,
+                                                 self.whitePieceCount, self.blackPieceCount)
+                            print(self.engine.search(i, False, float("-inf"), float("inf"), i))
+                            self.transpositions = self.engine.transpositions
+                            self.prevDepthScores = self.engine.prevDepthScores
+                            if self.engine.materialValue != None:
+                                bestMove = self.engine.moves[self.engine.materialValue]
+                            print(board.turn, bestMove)
+                        # print(self.engine.search(DEPTH, False, float("-inf"), float("inf"), DEPTH))
+                        # self.transpositions = self.engine.transpositions
+                        # bestMove = self.engine.moves[self.engine.materialValue]
                         print(time.time() - start_time)
                         self.prevDepthScores = defaultdict(lambda: None)
                         # game has ended (engine can make no more moves)
@@ -260,6 +259,7 @@ class MainWindow():
 
 
 newBoard = ch.Board()
-newBoard.set_board_fen("8/3K4/4P3/8/8/8/6k1/7q")
+# newBoard.set_board_fen("7k/b7/8/3q3P/3P4/2P5/8/7K")
+# print(newBoard.is_checkmate())
 window = MainWindow(newBoard)
 window.startGame()
