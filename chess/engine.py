@@ -322,7 +322,7 @@ class Engine():
             alpha = max(alpha, evaluation)
         return alpha
 
-    def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int, baseDepth: int) -> float:
+    def search(self, depth: int, whiteTurn: bool, alpha: int, beta: int, baseDepth: int, numExtensions: int) -> float:
         """
         search function will give scores to position after searching with a
         depth of depth.
@@ -342,13 +342,17 @@ class Engine():
 
         else:
             # organize the moves based on the past search at lower depth
-            if baseDepth != 1 and depth == baseDepth:
+            if baseDepth != 1 and depth - numExtensions == baseDepth:
                 squareMoves = list(zip(self.prevDepthScores.keys(), self.prevDepthScores.values()))
                 moves = [ch.Move.from_uci(move[0]) for move in sorted(squareMoves, key=lambda x: x[1])]
             else:
                 moves = self.orderMoves(list(self.pythonBoard.legal_moves))
                 moves = [move[0] for move in sorted(moves, key=lambda x: x[1], reverse=True)]
         for move in moves:
+            if self.pythonBoard.gives_check(move) and numExtensions < 2:
+                extensions = 1
+            else:
+                extensions = 0
             self.pythonBoard.push(move)
             if move.uci()[-1].isnumeric() == False:
                 moveName = move.uci()[2:-1]
@@ -360,7 +364,6 @@ class Engine():
 
             fenBoard = self.pythonBoard.board_fen()
             self.board = fenConverter(fenBoard)
-
             # if we find a position we've already visited at higher or equal depth, no need to re-evaluate
             if self.transpositions[(fenBoard, whiteTurn)][0] != None and self.transpositions[(fenBoard, whiteTurn)][1] >= depth:
                 evaluation = self.transpositions[(fenBoard, whiteTurn)][0]
@@ -368,52 +371,52 @@ class Engine():
                 self.undoPieces(piece, ppiece, moveName, whiteTurn)
                 self.board = fenConverter(self.pythonBoard.board_fen())
 
-                if evaluation == alpha and depth == baseDepth:
+                if evaluation == alpha and depth - numExtensions == baseDepth:
                     self.prevDepthScores[move.uci()] = 0
                     continue
 
                 # adding moves for our moves this depth
-                elif depth == baseDepth:
+                elif depth - numExtensions == baseDepth:
                     self.prevDepthScores[move.uci()] = evaluation
 
                 # Choose the move. Only legal moves for the next turn will be at depth baseDepth
-                if depth == baseDepth:
+                if depth - numExtensions == baseDepth:
                     self.moves[evaluation] = move
 
                 # pruning
                 if evaluation >= beta:
                     return beta
                 alpha = max(alpha, evaluation)
-                if depth == baseDepth:
+                if depth - numExtensions == baseDepth:
                     self.materialValue = alpha
                 continue
 
-            evaluation = -self.search(depth - 1, not whiteTurn, -beta, -alpha, baseDepth)
+            evaluation = -self.search(depth - 1 + extensions, not whiteTurn, -beta, -alpha, baseDepth, numExtensions + extensions) 
             self.transpositions[(fenBoard, whiteTurn)] = [evaluation, depth]
 
             self.pythonBoard.pop()
             self.undoPieces(piece, ppiece, moveName, whiteTurn)
             self.board = fenConverter(self.pythonBoard.board_fen())
 
-            if evaluation == alpha and depth == baseDepth:
+            if evaluation == alpha and depth - numExtensions == baseDepth:
                 self.prevDepthScores[move.uci()] = 0
                 continue
 
             # adding moves for our moves this depth
-            elif depth == baseDepth:
+            elif depth - numExtensions == baseDepth:
                 self.prevDepthScores[move.uci()] = evaluation
 
             # Choose the move. Only legal moves for the next turn will be at depth baseDepth
-            if depth == baseDepth:
+            if depth - numExtensions == baseDepth:
                 self.moves[evaluation] = move
 
             # pruning
             if evaluation >= beta:
                 return beta
             alpha = max(alpha, evaluation)
-            if depth == baseDepth:
+            if depth - numExtensions == baseDepth:
                 self.materialValue = alpha
-        if depth == baseDepth:
+        if depth - numExtensions == baseDepth:
             print(self.moves, alpha)
             self.materialValue = alpha
         return alpha
