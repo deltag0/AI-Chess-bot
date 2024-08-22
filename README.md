@@ -1,6 +1,6 @@
 # AI CHESS BOT
 Chess AI bot made in python using the minimax algorithm with optimizations such as alpha-beta pruning, transposition tables, move ordering, parsing through games for openings, etc.
-Capable of play at an ELO ~1500 (lichess)
+Capable of play at an ELO ~1600 (lichess)
 
 ### Some images:
 
